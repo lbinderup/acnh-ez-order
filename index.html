@@ -7,17 +7,6 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div>
-        <h1>ACNH EZ Order</h1>
-        <p class="subtitle">Search the catalog, build a 40-slot order, and copy the $ordercat command.</p>
-      </div>
-      <div class="order-summary">
-        <span id="slot-count">0</span>
-        <span>/ 40 slots</span>
-      </div>
-    </header>
-
     <main>
       <section class="panel">
         <div class="panel-header">
@@ -30,6 +19,13 @@
               aria-label="Search catalog"
             />
             <button id="clear-search" type="button">Clear</button>
+            <label class="select-label" for="sort-select">
+              Sort by
+              <select id="sort-select">
+                <option value="alpha" selected>Alphabetic</option>
+                <option value="category">Category</option>
+              </select>
+            </label>
           </div>
         </div>
         <div id="category-toggles" class="category-toggles" aria-label="Filter categories"></div>
@@ -45,9 +41,15 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Your Order</h2>
-          <div class="controls">
-            <button id="clear-order" type="button" class="secondary">Clear order</button>
-            <button id="copy-order" type="button">Copy $ordercat</button>
+          <div class="panel-header-actions">
+            <div class="order-summary">
+              <span id="slot-count">0</span>
+              <span>/ 40 slots</span>
+            </div>
+            <div class="controls">
+              <button id="clear-order" type="button" class="secondary">Clear order</button>
+              <button id="copy-order" type="button">Copy $ordercat</button>
+            </div>
           </div>
         </div>
         <div id="order-slots" class="order-grid" aria-live="polite"></div>

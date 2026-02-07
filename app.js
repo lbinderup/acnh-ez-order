@@ -9,11 +9,53 @@ const orderCommand = document.getElementById("order-command");
 const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
 const unsafeToggle = document.getElementById("unsafe-toggle");
+const sortSelect = document.getElementById("sort-select");
 
 const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 20;
 const PREVIEW_LOAD_DELAY_MS = 50;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
+const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature"]);
+const SUBCATEGORY_PRIORITY = {
+  Clothing: [
+    "Tops",
+    "Bottoms",
+    "Dresses",
+    "Shoes",
+    "Socks",
+    "Hats",
+    "Helmets",
+    "Accessories",
+    "Bags",
+    "Outfits",
+    "Other",
+  ],
+  Furniture: [
+    "Furniture",
+    "Walls",
+    "Floors",
+    "Rugs",
+    "Structures",
+    "Art",
+    "Decor",
+    "Infrastructure",
+    "Rooms",
+    "Custom",
+    "Other",
+  ],
+  Materials: [
+    "Crafting",
+    "Customization",
+    "Cooking",
+    "Minerals",
+    "Wood",
+    "Shells",
+    "Seasonal",
+    "Sweets",
+    "Other",
+  ],
+  Nature: ["Fish", "Insects", "Fossils", "Gyroids", "Flowers", "Fruit", "Mushrooms", "Shrubs", "Other"],
+};
 let catalogItems = [];
 let filteredItems = [];
 const orderItems = [];
@@ -249,7 +291,10 @@ let unitIconHeaderMap = null;
 let unitIconPointerMap = null;
 let isSearchEmpty = true;
 let showUnsafeItems = false;
-const activeCategories = new Set([DEFAULT_SUPER_CATEGORY]);
+const activeSuperCategories = new Set();
+const activeSubCategoriesBySuper = new Map();
+let categoryData = new Map();
+let sortMode = "alpha";
 
 const DEFAULT_SPRITE =
   "data:image/svg+xml;utf8," +
@@ -387,6 +432,93 @@ const getSuperCategory = (kindName) => {
   }
   return "Misc";
 };
+
+const getSubCategory = (kindName, superCategory) => {
+  if (!kindName || !GROUPED_CATEGORIES.has(superCategory)) {
+    return null;
+  }
+  if (superCategory === "Clothing") {
+    if (kindName.startsWith("Top_")) return "Tops";
+    if (kindName.startsWith("Bottoms_")) return "Bottoms";
+    if (kindName.startsWith("Onepiece_")) return "Dresses";
+    if (kindName.startsWith("Shoes_") || kindName.includes("Kind_Shoes")) return "Shoes";
+    if (kindName.includes("Kind_Socks")) return "Socks";
+    if (kindName.includes("Kind_Cap")) return "Hats";
+    if (kindName.includes("Kind_Helmet")) return "Helmets";
+    if (kindName.includes("Kind_Accessory")) return "Accessories";
+    if (kindName.includes("Kind_Bag") || kindName.includes("Kind_HandBag")) return "Bags";
+    if (
+      kindName.includes("Kind_ShopTorso") ||
+      kindName.includes("Kind_PlayerDemoOutfit") ||
+      kindName.includes("Kind_NpcOutfit")
+    ) {
+      return "Outfits";
+    }
+    return "Other";
+  }
+  if (superCategory === "Furniture") {
+    if (kindName.includes("Kind_Wall") || kindName.includes("Kind_RoomWall")) return "Walls";
+    if (kindName.includes("Kind_Floor") || kindName.includes("Kind_RoomFloor")) return "Floors";
+    if (kindName.includes("Kind_Rug") || kindName.includes("Kind_CommonFabricRug")) return "Rugs";
+    if (kindName.includes("Kind_Pillar") || kindName.includes("Kind_Counter")) return "Structures";
+    if (
+      kindName.includes("Kind_Picture") ||
+      kindName.includes("Kind_Poster") ||
+      kindName.includes("Kind_Sculpture")
+    ) {
+      return "Art";
+    }
+    if (kindName.includes("Kind_DoorDeco")) return "Decor";
+    if (
+      kindName.includes("Kind_BridgeItem") ||
+      kindName.includes("Kind_SlopeItem") ||
+      kindName.includes("Kind_HousePost") ||
+      kindName.includes("Kind_HousingKit")
+    ) {
+      return "Infrastructure";
+    }
+    if (kindName.includes("Kind_GardenEditList") || kindName.includes("Kind_OneRoomBox")) {
+      return "Rooms";
+    }
+    if (kindName.includes("Kind_MyDesign") || kindName.includes("Kind_CommonFabric")) {
+      return "Custom";
+    }
+    if (kindName.startsWith("Ftr_") || kindName.includes("Kind_Ftr")) return "Furniture";
+    return "Other";
+  }
+  if (superCategory === "Materials") {
+    if (kindName.includes("Kind_CraftMaterial")) return "Crafting";
+    if (kindName.includes("Kind_CraftRemake")) return "Customization";
+    if (kindName.includes("Kind_CookingMaterial")) return "Cooking";
+    if (kindName.includes("Kind_Ore") || kindName.includes("Kind_Stone") || kindName.includes("Kind_Clay")) {
+      return "Minerals";
+    }
+    if (kindName.includes("Kind_Wood")) return "Wood";
+    if (kindName.includes("Kind_Shell")) return "Shells";
+    if (kindName.includes("Kind_StarPiece") || kindName.includes("Kind_SnowCrystal") || kindName.includes("Kind_Feather")) {
+      return "Seasonal";
+    }
+    if (kindName.includes("Kind_Candy") || kindName.includes("Kind_Candyfloss") || kindName.includes("Kind_Honeycomb")) {
+      return "Sweets";
+    }
+    return "Other";
+  }
+  if (superCategory === "Nature") {
+    if (kindName.includes("Kind_Fish") || kindName.includes("Kind_DiveFish")) return "Fish";
+    if (kindName.includes("Kind_Insect")) return "Insects";
+    if (kindName.includes("Kind_Fossil")) return "Fossils";
+    if (kindName.includes("Kind_Gyroid")) return "Gyroids";
+    if (kindName.includes("Kind_Flower")) return "Flowers";
+    if (kindName.includes("Kind_Fruit")) return "Fruit";
+    if (kindName.includes("Kind_Mushroom")) return "Mushrooms";
+    if (kindName.includes("Kind_Bush")) return "Shrubs";
+    return "Other";
+  }
+  return null;
+};
+
+const getCategoryLabel = (item) =>
+  item.subCategory ? `${item.superCategory} · ${item.subCategory}` : item.superCategory;
 
 const buildDisplayNames = (rawNames) => {
   const names = [...rawNames];
@@ -775,6 +907,93 @@ const buildVariantPicker = (item) => {
   return container;
 };
 
+const sortSubcategories = (superCategory, subcategories) => {
+  const priorities = SUBCATEGORY_PRIORITY[superCategory] || [];
+  return [...subcategories].sort((a, b) => {
+    const aIndex = priorities.indexOf(a);
+    const bIndex = priorities.indexOf(b);
+    const aOrder = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+    const bOrder = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder;
+    }
+    return a.localeCompare(b);
+  });
+};
+
+const buildCategoryData = (items) => {
+  const data = new Map();
+  items.forEach((item) => {
+    if (!data.has(item.superCategory)) {
+      data.set(item.superCategory, new Set());
+    }
+    if (GROUPED_CATEGORIES.has(item.superCategory)) {
+      data.get(item.superCategory).add(item.subCategory || "Other");
+    }
+  });
+  return data;
+};
+
+const setDefaultCategoryFilters = () => {
+  activeSuperCategories.clear();
+  activeSubCategoriesBySuper.clear();
+  if (!categoryData.has(DEFAULT_SUPER_CATEGORY)) {
+    return;
+  }
+  if (GROUPED_CATEGORIES.has(DEFAULT_SUPER_CATEGORY)) {
+    const defaultSubcategories = categoryData.get(DEFAULT_SUPER_CATEGORY);
+    if (defaultSubcategories && defaultSubcategories.size > 0) {
+      activeSubCategoriesBySuper.set(
+        DEFAULT_SUPER_CATEGORY,
+        new Set(defaultSubcategories)
+      );
+    }
+  } else {
+    activeSuperCategories.add(DEFAULT_SUPER_CATEGORY);
+  }
+};
+
+const hasActiveCategoryFilters = () => {
+  if (activeSuperCategories.size > 0) {
+    return true;
+  }
+  return Array.from(activeSubCategoriesBySuper.values()).some((set) => set.size > 0);
+};
+
+const matchesCategoryFilter = (item) => {
+  if (!hasActiveCategoryFilters()) {
+    return true;
+  }
+  if (GROUPED_CATEGORIES.has(item.superCategory)) {
+    const activeSubcategories = activeSubCategoriesBySuper.get(item.superCategory);
+    if (!activeSubcategories || activeSubcategories.size === 0) {
+      return false;
+    }
+    return activeSubcategories.has(item.subCategory || "Other");
+  }
+  return activeSuperCategories.has(item.superCategory);
+};
+
+const applySort = (items) => {
+  const sorted = [...items];
+  if (sortMode === "category") {
+    sorted.sort((a, b) => {
+      const superCompare = a.superCategory.localeCompare(b.superCategory);
+      if (superCompare !== 0) {
+        return superCompare;
+      }
+      const subCompare = (a.subCategory || "").localeCompare(b.subCategory || "");
+      if (subCompare !== 0) {
+        return subCompare;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    return sorted;
+  }
+  sorted.sort((a, b) => a.name.localeCompare(b.name));
+  return sorted;
+};
+
 const renderCatalog = () => {
   catalogList.innerHTML = "";
   const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
@@ -808,7 +1027,7 @@ const renderCatalog = () => {
 
       meta = document.createElement("div");
       meta.className = "catalog-meta";
-      meta.textContent = `${item.superCategory} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+      meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
     } else {
       title = document.createElement("div");
       title.className = "catalog-name-box";
@@ -817,7 +1036,9 @@ const renderCatalog = () => {
 
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Add to order";
+    button.className = "add-to-order";
+    button.textContent = "+";
+    button.setAttribute("aria-label", "Add to order");
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
 
@@ -855,7 +1076,7 @@ const renderOrder = () => {
 
     const meta = document.createElement("div");
     meta.className = "catalog-meta";
-    meta.textContent = `${item.superCategory} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+    meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
 
     const button = document.createElement("button");
     button.type = "button";
@@ -916,20 +1137,20 @@ const filterCatalog = () => {
   }
 
   filteredItems = catalogItems.filter((item) => {
-    const matchesCategory = activeCategories.size === 0 || activeCategories.has(item.superCategory);
+    const matchesCategory = matchesCategoryFilter(item);
     const searchable =
-      `${item.name} ${item.superCategory} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
+      `${item.name} ${item.superCategory} ${item.subCategory || ""} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     const matchesUnsafe = showUnsafeItems || !item.isUnsafe;
     return matchesCategory && matchesQuery && matchesUnsafe;
   });
 
+  filteredItems = applySort(filteredItems);
   renderCatalog();
 };
 
 const resetCategoryFilters = () => {
-  activeCategories.clear();
-  activeCategories.add(DEFAULT_SUPER_CATEGORY);
+  setDefaultCategoryFilters();
   updateCategoryToggleState();
 };
 
@@ -937,28 +1158,109 @@ const updateCategoryToggleState = () => {
   if (!categoryToggles) {
     return;
   }
-  categoryToggles.querySelectorAll("button[data-category]").forEach((button) => {
+  categoryToggles.querySelectorAll("button[data-role='group']").forEach((button) => {
     const category = button.dataset.category;
-    const isActive = activeCategories.has(category);
+    const available = categoryData.get(category) || new Set();
+    const active = activeSubCategoriesBySuper.get(category) || new Set();
+    const isActive = active.size > 0;
+    const isPartial = isActive && active.size < available.size;
+    button.classList.toggle("is-active", isActive && !isPartial);
+    button.classList.toggle("is-partial", isPartial);
+    button.setAttribute("aria-pressed", isActive.toString());
+  });
+  categoryToggles.querySelectorAll("button[data-subcategory]").forEach((button) => {
+    const category = button.dataset.category;
+    const subcategory = button.dataset.subcategory;
+    const active = activeSubCategoriesBySuper.get(category);
+    const isActive = active ? active.has(subcategory) : false;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive.toString());
+  });
+  categoryToggles.querySelectorAll("button[data-role='solo']").forEach((button) => {
+    const category = button.dataset.category;
+    const isActive = activeSuperCategories.has(category);
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive.toString());
   });
 };
 
 const populateCategoryToggles = () => {
-  const categories = Array.from(new Set(catalogItems.map((item) => item.superCategory))).sort();
+  const categories = Array.from(categoryData.keys()).sort();
   categoryToggles.innerHTML = "";
   categories.forEach((category) => {
+    if (GROUPED_CATEGORIES.has(category)) {
+      const group = document.createElement("div");
+      group.className = "category-group";
+
+      const header = document.createElement("div");
+      header.className = "category-group-header";
+
+      const parentButton = document.createElement("button");
+      parentButton.type = "button";
+      parentButton.className = "category-toggle";
+      parentButton.dataset.category = category;
+      parentButton.dataset.role = "group";
+      parentButton.textContent = category;
+      parentButton.addEventListener("click", () => {
+        const available = categoryData.get(category) || new Set();
+        const active = activeSubCategoriesBySuper.get(category);
+        if (active && active.size === available.size) {
+          activeSubCategoriesBySuper.delete(category);
+        } else {
+          activeSubCategoriesBySuper.set(category, new Set(available));
+        }
+        updateCategoryToggleState();
+        filterCatalog();
+      });
+
+      header.appendChild(parentButton);
+      group.appendChild(header);
+
+      const subToggleRow = document.createElement("div");
+      subToggleRow.className = "category-subtoggles";
+
+      const subcategories = sortSubcategories(category, categoryData.get(category) || new Set());
+      subcategories.forEach((subcategory) => {
+        const subButton = document.createElement("button");
+        subButton.type = "button";
+        subButton.className = "category-toggle";
+        subButton.dataset.category = category;
+        subButton.dataset.subcategory = subcategory;
+        subButton.textContent = subcategory;
+        subButton.addEventListener("click", () => {
+          const active = activeSubCategoriesBySuper.get(category) || new Set();
+          if (active.has(subcategory)) {
+            active.delete(subcategory);
+          } else {
+            active.add(subcategory);
+          }
+          if (active.size === 0) {
+            activeSubCategoriesBySuper.delete(category);
+          } else {
+            activeSubCategoriesBySuper.set(category, active);
+          }
+          updateCategoryToggleState();
+          filterCatalog();
+        });
+        subToggleRow.appendChild(subButton);
+      });
+
+      group.appendChild(subToggleRow);
+      categoryToggles.appendChild(group);
+      return;
+    }
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "category-toggle";
     button.dataset.category = category;
+    button.dataset.role = "solo";
     button.textContent = category;
     button.addEventListener("click", () => {
-      if (activeCategories.has(category)) {
-        activeCategories.delete(category);
+      if (activeSuperCategories.has(category)) {
+        activeSuperCategories.delete(category);
       } else {
-        activeCategories.add(category);
+        activeSuperCategories.add(category);
       }
       updateCategoryToggleState();
       filterCatalog();
@@ -1046,6 +1348,7 @@ const loadCatalogItems = async () => {
       kindIndex !== undefined && ITEM_KIND_NAMES[kindIndex] ? ITEM_KIND_NAMES[kindIndex] : "Unknown";
     const kindName = formatKindName(rawKindName);
     const superCategory = getSuperCategory(rawKindName);
+    const subCategory = getSubCategory(rawKindName, superCategory);
     const hexId = formatItemHexId(index);
     const isUnsafe = isUnsafeItem(name, rawKindName);
     const variantData = spriteVariantMap.get(hexId);
@@ -1079,6 +1382,7 @@ const loadCatalogItems = async () => {
       name,
       kindLabel: kindName,
       superCategory,
+      subCategory,
       isUnsafe,
       variants,
       selectedVariantIndex,
@@ -1092,6 +1396,8 @@ const init = async () => {
   await loadUnitIconAssets();
   await loadSpriteVariants();
   catalogItems = await loadCatalogItems();
+  categoryData = buildCategoryData(catalogItems);
+  setDefaultCategoryFilters();
   filteredItems = [];
   populateCategoryToggles();
   renderCatalog();
@@ -1109,9 +1415,16 @@ if (unsafeToggle) {
 searchInput.addEventListener("input", filterCatalog);
 clearSearchButton.addEventListener("click", () => {
   searchInput.value = "";
-  resetCategoryFilters();
   filterCatalog();
 });
+
+if (sortSelect) {
+  sortSelect.value = sortMode;
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value;
+    filterCatalog();
+  });
+}
 
 clearOrderButton.addEventListener("click", () => {
   orderItems.length = 0;
