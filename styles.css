@@ -84,6 +84,38 @@ select {
   margin-top: 1rem;
 }
 
+.secondary-filters {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.secondary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #9c27b0;
+}
+
+.secondary-toggle:has(input:checked) {
+  border-color: #9c27b0;
+  color: #4a148c;
+  background: #f3e5f5;
+}
+
 .category-toggle {
   background: #f1f5f9;
   color: var(--text);

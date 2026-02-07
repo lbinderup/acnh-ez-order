@@ -8,6 +8,7 @@ const copyOrderButton = document.getElementById("copy-order");
 const orderCommand = document.getElementById("order-command");
 const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
+const unsafeToggle = document.getElementById("unsafe-toggle");
 
 const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 20;
@@ -247,6 +248,7 @@ let unitIconDumpBytes = null;
 let unitIconHeaderMap = null;
 let unitIconPointerMap = null;
 let isSearchEmpty = true;
+let showUnsafeItems = false;
 const activeCategories = new Set([DEFAULT_SUPER_CATEGORY]);
 
 const DEFAULT_SPRITE =
@@ -403,6 +405,19 @@ const buildDisplayNames = (rawNames) => {
     seen.add(cleaned);
     return cleaned;
   });
+};
+
+const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NnpcRoomMarker", "SequenceOnly"];
+const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
+
+const isUnsafeItem = (name, rawKindName) => {
+  if (name && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
+    return true;
+  }
+  if (!rawKindName) {
+    return false;
+  }
+  return UNSAFE_KIND_TOKENS.some((token) => rawKindName.includes(token));
 };
 
 const parseHeaderMap = (text) => {
@@ -905,7 +920,8 @@ const filterCatalog = () => {
     const searchable =
       `${item.name} ${item.superCategory} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
-    return matchesCategory && matchesQuery;
+    const matchesUnsafe = showUnsafeItems || !item.isUnsafe;
+    return matchesCategory && matchesQuery && matchesUnsafe;
   });
 
   renderCatalog();
@@ -1031,6 +1047,7 @@ const loadCatalogItems = async () => {
     const kindName = formatKindName(rawKindName);
     const superCategory = getSuperCategory(rawKindName);
     const hexId = formatItemHexId(index);
+    const isUnsafe = isUnsafeItem(name, rawKindName);
     const variantData = spriteVariantMap.get(hexId);
     const variants = variantData
       ? Array.from(variantData.variants)
@@ -1062,6 +1079,7 @@ const loadCatalogItems = async () => {
       name,
       kindLabel: kindName,
       superCategory,
+      isUnsafe,
       variants,
       selectedVariantIndex,
       subVariantsByVariant,
@@ -1079,6 +1097,14 @@ const init = async () => {
   renderCatalog();
   renderOrder();
 };
+
+if (unsafeToggle) {
+  unsafeToggle.checked = showUnsafeItems;
+  unsafeToggle.addEventListener("change", () => {
+    showUnsafeItems = unsafeToggle.checked;
+    filterCatalog();
+  });
+}
 
 searchInput.addEventListener("input", filterCatalog);
 clearSearchButton.addEventListener("click", () => {
