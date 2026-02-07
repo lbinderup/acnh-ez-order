@@ -1,0 +1,737 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+using NHSE.Core;
+using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.Collections;
+using static UI_MapBulkSpawn.SpawnDirection;
+using System.IO;
+
+public enum TerrainSelectMode
+{
+    Drop,
+    Delete,
+    Load,
+    Custom,
+    Place
+}
+
+public enum AffectMode // maybe terrain/map tiles eventually
+{
+    Layer1,
+    Layer2
+}
+
+public class OffsetData
+{
+    public uint Offset;
+    public byte[] ToSend;
+    public OffsetData(uint os, byte[] data) { Offset = os; ToSend = data; }
+}
+
+public class UI_MapTerrain : MonoBehaviour
+{
+    public const string ByteDumpName = "InternalMapBackup";
+    public string FilePathDump => Application.persistentDataPath + Path.DirectorySeparatorChar + ByteDumpName + Path.DirectorySeparatorChar;
+
+    public UI_Map MapParent;
+
+    public RawImage MapImage;
+    public Button RefetchItemsButton;
+
+    public UI_MapSelector GridSelector;
+    public UI_MapGrid AcreTileMap;
+
+    public GameObject UnfetchedBlocker;
+
+    private MapGraphicGenerator graphicGenerator;
+
+    // acre data from NHSE.Core.MainSave.cs
+    public const int AcreWidth = MapGrid.AcreWidth + (2 * 1); // 1 on each side cannot be traversed
+    private const int AcreHeight = MapGrid.AcreHeight + (2 * 1); // 1 on each side cannot be traversed
+    private const int AcreMax = AcreWidth * AcreHeight;
+    private const int AcreSizeAll = AcreMax * 2;
+    private const int AcrePlusAdditionalParams = AcreSizeAll + 2 + 4 + 8 + sizeof(uint); // MainFieldParamUniqueID + EventPlazaLeftUpX + EventPlazaLeftUpZ
+    private const int MapItemsWidthMax = MapGrid.AcreWidth * 32;
+    private const int MapItemsHeightMax = MapGrid.AcreHeight * 32;
+    private const int MapEndX = (MapGrid.AcreWidth * 32) - 16; // End of selectable 8x8 corner
+    private const int MapEndY = (MapGrid.AcreHeight * 32) - 16; // End of selectable 8x8 corner
+
+    private const int FieldSize = (int)OffsetHelper.FieldSize;
+    private const int TerrainSize = MapGrid.MapTileCount16x16 * TerrainTile.SIZE;
+
+    private const int BuildingSize = 46 * Building.SIZE;
+
+    private byte[] field1, field2;
+    private byte[] field
+    {
+        get => field1.Concat(field2).ToArray();
+        set
+        {
+            field1 = value.Take(FieldSize).ToArray();
+            field2 = value.Slice(FieldSize, FieldSize).ToArray();
+        }
+    }
+    private byte[] terrain, acre_plaza, structure;
+    private uint plazaX, plazaY;
+    private bool fetched = false;
+    private int lastCursorX, lastCursorY;
+
+    private string fieldFile => FilePathDump + nameof(field) + ".bin";
+    private string terrainFile => FilePathDump + nameof(terrain) + ".bin";
+    private string acre_plazaFile => FilePathDump + nameof(acre_plaza) + ".bin";
+    private string structureFile => FilePathDump + nameof(structure) + ".bin";
+
+    private Item[] layerTemplate1, layerTemplate2;
+
+    private FieldItemManager fieldManager;
+    private NHSE.Core.TerrainLayer terrainLayer;
+    private List<Building> buildings;
+    private List<UI_MapItemTile> itemTiles;
+
+    public Dropdown SelectMode;
+    public Dropdown AffectingMode;
+    public Button WriteButton;
+    public Button LoadLastButton;
+    public Button SaveButton;
+    public Text MapCoords;
+
+    public InputField PlazaX, PlazaY;
+
+    public UI_MapBulkSpawn BulkSpawner;
+    public UI_MapFindAndReplace FindAndReplacer;
+
+    private static UI_SearchWindow SearchWindow => UI_SearchWindow.LastLoadedSearchWindow;
+    
+    public static Item ReferenceItem(int flag0 = -1) { var ret = SearchWindow.GetAsItem(null); if (flag0 > 0) ret.SystemParam = Convert.ToByte(flag0); return ret; }
+    
+    public Text CurrentLoadedItemName;
+
+    private float timer = 0f;
+
+    [HideInInspector]
+    public TerrainSelectMode CurrentSelectMode { get; private set; } = 0;
+
+    [HideInInspector]
+    public AffectMode CurrentAffectMode { get; private set; } = AffectMode.Layer1;
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        SelectMode.ClearOptions();
+        string[] smChoices = Enum.GetNames(typeof(TerrainSelectMode));
+        foreach (string sm in smChoices)
+        {
+            Dropdown.OptionData newVal = new Dropdown.OptionData();
+            newVal.text = sm;
+            SelectMode.options.Add(newVal);
+        }
+        SelectMode.onValueChanged.AddListener(delegate { CurrentSelectMode = (TerrainSelectMode)SelectMode.value; });
+        SelectMode.value = 0;
+        SelectMode.RefreshShownValue();
+
+        AffectingMode.ClearOptions();
+        string[] amChoices = Enum.GetNames(typeof(AffectMode));
+        foreach (string am in amChoices)
+        {
+            Dropdown.OptionData newVal = new Dropdown.OptionData();
+            newVal.text = am;
+            AffectingMode.options.Add(newVal);
+        }
+        AffectingMode.onValueChanged.AddListener(delegate { CurrentAffectMode = (AffectMode)AffectingMode.value; UpdateLayerImage(); });
+        AffectingMode.value = 0;
+        AffectingMode.RefreshShownValue();
+
+        AcreTileMap.PopulateGrid();
+        itemTiles = new List<UI_MapItemTile>();
+        foreach (var cell in AcreTileMap.SpawnedCells)
+            itemTiles.Add(cell.GetComponent<UI_MapItemTile>());
+        GridSelector.OnSelectorChanged += updateAcreGrid;
+        UnfetchedBlocker.gameObject.SetActive(true);
+
+        SearchWindow.OnNewItemSelected += updateItem;
+
+        LoadLastButton.gameObject.SetActive(checkAndLoadForExistingFiles());
+        updatePositionText();
+    }
+
+    private void updatePositionText()
+    {
+        MapCoords.text = $"X:{lastCursorX:000}, Y:{lastCursorY:000}";
+    }
+
+    private bool checkAndLoadForExistingFiles()
+    {
+        if (!File.Exists(fieldFile))
+            return false;
+        else
+            field = File.ReadAllBytes(fieldFile);
+
+        if (!File.Exists(terrainFile))
+            return false;
+        else
+            terrain = File.ReadAllBytes(terrainFile);
+
+        if (!File.Exists(acre_plazaFile))
+            return false;
+        else
+            acre_plaza = File.ReadAllBytes(acre_plazaFile);
+
+        if (!File.Exists(structureFile))
+            return false;
+        else
+            structure = File.ReadAllBytes(structureFile);
+
+        return true;
+    }
+
+    private void saveAll()
+    {
+        if (!Directory.Exists(FilePathDump))
+            Directory.CreateDirectory(FilePathDump);
+        if (field != null)
+        {
+            if (File.Exists(fieldFile))
+                File.Delete(fieldFile);
+            var listLayer1 = fieldManager.Layer1.Tiles.SetArray(Item.SIZE);
+            var listLayer2 = fieldManager.Layer2.Tiles.SetArray(Item.SIZE);
+            var allField = listLayer1.Concat(listLayer2).ToArray();
+            File.WriteAllBytes(fieldFile, allField);
+        }
+        if (terrain != null)
+        {
+            if (File.Exists(terrainFile))
+                File.Delete(terrainFile);
+            File.WriteAllBytes(terrainFile, terrain);
+        }
+        if (acre_plaza != null)
+        {
+            if (File.Exists(acre_plazaFile))
+                File.Delete(acre_plazaFile);
+            File.WriteAllBytes(acre_plazaFile, acre_plaza);
+        }
+        if (structure != null)
+        {
+            if (File.Exists(structureFile))
+                File.Delete(structureFile);
+            File.WriteAllBytes(structureFile, structure);
+        }
+    }
+
+    private void Update() // periodically save everything
+    {
+        timer += Time.deltaTime;
+        if (timer > 60f)
+        {
+            timer = 0f;
+            saveAll();
+        }
+    }
+
+    public void BringSearchWindowToFront() => SearchWindow.SetAtFront(true, false);
+
+    private void updateItem(ushort id, string itemName)
+    {
+        CurrentLoadedItemName.text = itemName;
+    }
+
+    public void GenerateMap() => fetchIndex(0);
+    public void RefetchItems() => fetchIndex(0, true);
+    public void WriteChanges() => sendNewBytes();
+
+    void updateAcreGrid(Vector2 selectorPos)
+    {
+        if (!fetched) return;
+        int itemStartX = Mathf.RoundToInt(Mathf.Lerp(0, MapEndX, selectorPos.x));
+        int itemStartY = Mathf.RoundToInt(Mathf.Lerp(0, MapEndY, selectorPos.y));
+        updateGrid(itemStartX, itemStartY);
+    }
+
+    void updateGrid(int startX, int startY)
+    {
+        // Go up 1 if these are odd nums (ext tiles)
+        if (startX % 2 != 0)
+            startX--;
+        if (startY % 2 != 0)
+            startY--;
+
+        var layer = CurrentAffectMode == AffectMode.Layer1 ? fieldManager.Layer1 : fieldManager.Layer2;
+        var tiles = fieldManager.Layer1.Tiles;
+        int index = 0;
+        for (int i = startX; i < startX + 16; i += 2)
+        {
+            var ix = i * MapItemsHeightMax;
+            for (int j = startY; j < startY + 16; j += 2)
+            {
+                var indexTile = ((index * 8) % 64) + Mathf.FloorToInt(index / 8f);
+                var bgColor = graphicGenerator.GetBackgroudPixel(i/2, j/2);
+                var block = new FieldItemBlock(layer, i, j);
+                itemTiles[indexTile].SetItem(block, bgColor, this);
+                index++;
+            }
+        }
+
+        lastCursorX = startX;
+        lastCursorY = startY;
+        updatePositionText();
+    }
+
+    public void BulkSpawn()
+    {
+        try
+        {
+            bulkSpawn();
+        }
+        catch (Exception e)
+        {
+            UI_Popup.CurrentInstance.CreatePopupChoice($"Error: {e.Message}", "OK", () => { }, Color.red);
+        }
+        finally
+        {
+            UpdateLayerImage();
+            updateGrid(lastCursorX, lastCursorY);
+        }
+    }
+
+    private void bulkSpawn()
+    {
+        var itemsToSpawn = BulkSpawner.GetItemsOfCurrentPreset();
+        if (itemsToSpawn.Length < 1)
+            return;
+
+        int x = lastCursorX;
+        int y = lastCursorY;
+        float widthMultiplier = BulkSpawner.RectWidthDimension / BulkSpawner.RectHeightDimension;
+        int mWidth = Mathf.RoundToInt(Mathf.Sqrt(itemsToSpawn.Length * widthMultiplier));
+        var spawnDir = BulkSpawner.CurrentSpawnDirection;
+        int dirX = (spawnDir == SouthEast || spawnDir == NorthEast) ? 2 : -2;
+        int dirY = (spawnDir == NorthWest || spawnDir == NorthEast) ? -2 : 2;
+        int xLimit = x + (dirX * mWidth);
+        var layer = CurrentAffectMode == AffectMode.Layer1 ? fieldManager.Layer1 : fieldManager.Layer2;
+
+        bool spawnComplete = false;
+        int currentItemIndex = 0;
+        int skipCount = 0;
+
+        while (!spawnComplete)
+        {
+            if (x >= layer.MaxWidth || x < 0 || y >= layer.MaxHeight || y < 0)
+            {
+                spawnComplete = true;
+                Debug.Log($"Skipped {skipCount} times.");
+                throw new Exception("Reached the bounds of your map without enough space. Some items did not spawn.");
+            }
+
+            Item currentTile = layer.GetTile(x, y);
+            var isClear = layer.IsOccupied(currentTile, x, y) == PlacedItemPermission.NoCollision;
+            // auto set to root tiles thanks to updateGrid
+            if ((!BulkSpawner.OverwriteTiles && !isClear) || !graphicGenerator.IsGroundTile(x/2,y/2))
+            {
+                // do nothing
+                skipCount++;
+            }
+            else 
+            {
+                if (!isClear) // may break but try/catch should catch it outside of bounds
+                {
+                    // delete current item (square only)
+                    var tileToDelete = currentTile;
+                    if (tileToDelete.IsExtension)
+                    {
+                        var l = layer;
+                        var rx = Math.Max(0, Math.Min(l.MaxWidth - 1, x - tileToDelete.ExtensionX));
+                        var ry = Math.Max(0, Math.Min(l.MaxHeight - 1, y - tileToDelete.ExtensionY));
+                        var redir = l.GetTile(rx, ry);
+                        if (redir.IsRoot && redir.ItemId == tileToDelete.ExtensionItemId)
+                            tileToDelete = redir;
+
+                        layer.DeleteExtensionTiles(tileToDelete, rx, ry);
+                    }
+                    layer.DeleteExtensionTiles(tileToDelete, x, y);
+                }
+
+                // place item
+                var itemToPlace = itemsToSpawn[currentItemIndex];
+                if (itemToPlace.IsNone)
+                {
+                    layer.DeleteExtensionTiles(currentTile, x, y);
+                    currentTile.Delete();
+                }
+                else
+                {
+                    currentTile.CopyFrom(itemToPlace);
+                    layer.SetExtensionTiles(currentTile, x, y);
+                }
+                currentItemIndex++;
+            }
+
+            x += dirX;
+            if (x == xLimit)
+            {
+                x = lastCursorX;
+                y += dirY;
+            }
+
+            if (currentItemIndex >= itemsToSpawn.Length)
+                spawnComplete = true;
+        }
+    }
+
+    public void FindAndReplace() => findAndReplace(FindAndReplacer.ReplaceItem, FindAndReplacer.NewItem, FindAndReplacer.CurrentOption, CurrentAffectMode == AffectMode.Layer1 ? 0 : 1);
+    
+
+    private void findAndReplace(Item toReplace, Item newItem, FindAndReplaceOptions options, int layer)
+    {
+        Func<Item, Item, bool> compareFunc = GetComparer(options);
+        FieldItemLayer fil = layer == 0 ? fieldManager.Layer1 : fieldManager.Layer2;
+        int replaceCount = 0;
+        for (int i = 0; i < MapItemsWidthMax; ++i)
+        {
+            for (int j = 0; j < MapItemsHeightMax; ++j)
+            {
+                Item item = fil.GetTile(i, j);
+                if (compareFunc(toReplace, item))
+                {
+                    item.CopyFrom(newItem);
+                    fil.SetExtensionTiles(item, i, j);
+                    replaceCount++;
+                }
+            }
+        }
+        if (replaceCount > 0)
+            UI_Popup.CurrentInstance.CreatePopupMessage(2f, $"Replaced {replaceCount} items.", () => { });
+        else
+            UI_Popup.CurrentInstance.CreatePopupMessage(3f, "Unable to find any items that match desired replacement type.", () => { }, Color.red);
+        UpdateLayerImage();
+        updateGrid(lastCursorX, lastCursorY);
+    }
+
+    public void UpdateLayerImage()
+    {
+        if (graphicGenerator == null)
+            return;
+
+        int layer = (int)CurrentAffectMode;
+        graphicGenerator.UpdateImageForLayer(layer);
+        MapImage.texture = graphicGenerator.MapBackgroundImage;
+    }
+
+    public void GenAllWithLoadedBytes() => generateAll();
+
+    void generateAll()
+    {
+        Item[] itemLayer1 = Item.GetArray(field.Take(MapGrid.MapTileCount32x32 * Item.SIZE).ToArray());
+        Item[] itemLayer2 = Item.GetArray(field.Slice(MapGrid.MapTileCount32x32 * Item.SIZE, MapGrid.MapTileCount32x32 * Item.SIZE).ToArray());
+
+        // create templates for pushing bytes back
+        layerTemplate1 = CloneItemArray(itemLayer1);
+        layerTemplate2 = CloneItemArray(itemLayer2);
+
+        fieldManager = new FieldItemManager(itemLayer1, itemLayer2);
+        terrainLayer = new NHSE.Core.TerrainLayer(TerrainTile.GetArray(terrain), acre_plaza.Slice(0, AcreSizeAll));
+        buildings = new List<Building>(Building.GetArray(structure));
+
+        plazaX = BitConverter.ToUInt32(acre_plaza, AcreSizeAll + 4);
+        plazaY = BitConverter.ToUInt32(acre_plaza, AcreSizeAll + 8);
+
+        PlazaX.text = plazaX.ToString();
+        PlazaY.text = plazaY.ToString();
+
+        if (graphicGenerator != null) graphicGenerator.ReleaseAllResources();
+        graphicGenerator = new MapGraphicGenerator(fieldManager, terrainLayer, (ushort)plazaX, (ushort)plazaY, buildings.ToArray());
+        MapImage.texture = graphicGenerator.MapBackgroundImage;
+        MapImage.color = Color.white;
+        fetched = true;
+
+        updateGrid(lastCursorX, lastCursorY);
+        UnfetchedBlocker.gameObject.SetActive(false);
+        AffectingMode.interactable = true;
+        RefetchItemsButton.interactable = true;
+        WriteButton.interactable = true;
+        SaveButton.interactable = true;
+    }
+
+    // loops between map layers to fetch everything
+    void fetchIndex(int index, bool refetch = false)
+    {
+        switch (index)
+        {
+            case 0:
+                createFetchPopup($"Fetching field{(refetch ? string.Empty : " (1 of 3)")}...\r\nThis may take a long time if your thread sleep time is above 20ms", 0, (uint)OffsetHelper.FieldItemStartLayer1, FieldSize, () => { fetchIndex(1, refetch); });
+                break;
+            case 1 when !refetch:
+                createFetchPopup("Fetching terrain (2 of 3)...", 1, (uint)OffsetHelper.LandMakingMapStart, TerrainSize, () => { fetchIndex(2, refetch); });
+                break;
+            case 2 when !refetch:
+                createFetchPopup("Fetching acre (3 of 3)...", 2, (uint)OffsetHelper.OutsideFieldStart, AcrePlusAdditionalParams, () => { fetchIndex(3, refetch); });
+                break;
+            case 3 when !refetch:
+                createFetchPopup("Placing buildings and generating map...", 3, (uint)OffsetHelper.MainFieldStructurStart, BuildingSize, () => { fetchIndex(4, refetch); });
+                break;
+            case 4 when !refetch:
+                createFetchPopup("Fetching field layer 2...", 4, (uint)OffsetHelper.FieldItemStartLayer2, FieldSize, () => { fetchIndex(5, refetch); saveAll(); });
+                break;
+            default:
+                generateAll();
+                break;
+        }
+    }
+
+    void createFetchPopup(string msg, int index, uint offset, int size, Action next)
+    {
+        byte[] toPopulate = new byte[0];
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, msg, () => { toPopulate = MapParent.CurrentConnection.ReadBytes(offset, size); setFieldArray(index, toPopulate); next.Invoke(); });
+    }
+
+    void setFieldArray(int index, byte[] pop)
+    {
+        switch (index)
+        {
+            case 0: field1 = pop; break;
+            case 1: terrain = pop; break;
+            case 2: acre_plaza = pop; break;
+            case 3: structure = pop; break;
+            case 4: field2 = pop; break;
+        }
+    }
+
+    public void SaveLayer(int l)
+    {
+        Item[] tiles = l == 0 ? fieldManager.Layer1.Tiles : fieldManager.Layer2.Tiles;
+        var bytes = tiles.SetArray(Item.SIZE);
+        UI_NFSOACNHHandler.LastInstanceOfNFSO.SaveFile($"{DateTime.Now.ToString("yyyyddMM_HHmmss")}_Layer{l + 1}.nhl", bytes);
+    }
+
+    public void LoadLayer(int l) => UI_NFSOACNHHandler.LastInstanceOfNFSO.OpenFile("nhl", (x) => { loadBytes(l, x); });
+
+    private void loadBytes(int l, byte[] data)
+    {
+        //Array.Copy(data, 0, field, l * MapGrid.MapTileCount32x32 * Item.SIZE, MapGrid.MapTileCount32x32 * Item.SIZE);
+        //generateAll();
+        Item[] itemLayer = Item.GetArray(data);
+        FieldItemLayer toOverwrite = l == 0 ? fieldManager.Layer1 : fieldManager.Layer2;
+        for (int i = 0; i < toOverwrite.Tiles.Length; ++i)
+            toOverwrite.Tiles[i].CopyFrom(itemLayer[i]);
+        UpdateLayerImage();
+    }
+
+    void sendNewBytes()
+    {
+        const int acreSizeItems = 32 * 32;
+        const uint acreSizeBytes = acreSizeItems * Item.SIZE;
+
+        // convert all to lists
+        var listLayer1 = new List<Item>(fieldManager.Layer1.Tiles);
+        var listLayer2 = new List<Item>(fieldManager.Layer2.Tiles);
+        var templateLayer1 = new List<Item>(layerTemplate1);
+        var templateLayer2 = new List<Item>(layerTemplate2);
+
+        // split everything into acres
+        var splitl1 = listLayer1.ChunkBy(acreSizeItems);
+        var splitl2 = listLayer2.ChunkBy(acreSizeItems);
+        var splitlt1 = templateLayer1.ChunkBy(acreSizeItems);
+        var splitlt2 = templateLayer2.ChunkBy(acreSizeItems);
+
+        var offset = (uint)OffsetHelper.FieldItemStartLayer1;
+        var offsetl2 = (uint)OffsetHelper.FieldItemStartLayer2;
+        var dataSendList = new List<OffsetData>();
+
+        // layer 1
+        for (uint i = 0; i < splitl1.Count; ++i)
+        {
+            int ix = (int)i;
+            if (splitl1[ix].IsDifferent(splitlt1[ix]))
+                dataSendList.Add(new OffsetData(offset + (i * acreSizeBytes), splitl1[ix].SetArray(Item.SIZE)));
+        }
+
+        // layer 2
+        for (uint i = 0; i < splitl2.Count; ++i)
+        {
+            int ix = (int)i;
+            if (splitl2[ix].IsDifferent(splitlt2[ix]))
+                dataSendList.Add(new OffsetData(offsetl2 + (i * acreSizeBytes), splitl2[ix].SetArray(Item.SIZE)));
+        }
+
+        var layerBytes = new List<byte>(listLayer1.SetArray(Item.SIZE));
+        layerBytes.AddRange(listLayer2.SetArray(Item.SIZE));
+
+        ReferenceContainer<float> progressValue = new ReferenceContainer<float>(0f);
+        Texture2D itemTex = SpriteBehaviour.ItemToTexture2D(5984, 0, out var _); // large star fragment
+        UI_Popup.CurrentInstance.CreateProgressBar("Placing new acres... Go in then out of a building to view changes.", progressValue, itemTex, Vector3.up * 180, null, "Cancel", () => { StopAllCoroutines(); });
+        StartCoroutine(writeData(dataSendList.ToArray(), progressValue, () => { field = layerBytes.ToArray(); generateAll(); }));
+    }
+
+    IEnumerator writeData(OffsetData[] toSend, ReferenceContainer<float> progress, Action onEnd)
+    {
+        for (int i = 0; i < toSend.Length; ++i)
+        {
+            var chunk = toSend[i];
+            MapParent.CurrentConnection.WriteBytes(chunk.ToSend, chunk.Offset);
+            MapParent.CurrentConnection.WriteBytes(chunk.ToSend, chunk.Offset + (uint)OffsetHelper.BackupSaveDiff);
+            float currentProgress = (i + 1) / (float)toSend.Length;
+            progress.UpdateValue(currentProgress);
+            yield return null;
+        }
+
+
+        onEnd?.Invoke();
+        yield return null;
+        progress.UpdateValue(1.01f);
+        UI_ACItemGrid.LastInstanceOfItemGrid.PlayHappyParticles();
+    }
+
+    public static Item[] CloneItemArray(Item[] source)
+    {
+        Item[] items = new Item[source.Length];
+        for (int i = 0; i < source.Length; ++i)
+        {
+            var bytes = source[i].ToBytesClass();
+            items[i] = bytes.ToClass<Item>();
+        }
+        return items;
+    }
+
+    // delegate
+    public bool ItemIdsMatch(Item i, Item compare) => ItemExtensions.ItemIdsMatch(i, compare);
+    public bool ItemVariationsMatch(Item i, Item compare) => ItemExtensions.ItemVariationsMatch(i, compare);
+    public bool ItemsAreSame(Item i, Item compare) => ItemExtensions.ItemsAreSame(i, compare);
+    public Func<Item, Item, bool> GetComparer(FindAndReplaceOptions options)
+    {
+        Func<Item, Item, bool> retFunc;
+        switch (options)
+        {
+            case FindAndReplaceOptions.MatchItemId:
+                retFunc = ItemIdsMatch;
+                break;
+            case FindAndReplaceOptions.MatchItemAndVariation:
+                retFunc = ItemVariationsMatch;
+                break;
+            case FindAndReplaceOptions.MatchFully:
+                retFunc = ItemsAreSame;
+                break;
+            default:
+                retFunc = ItemIdsMatch;
+                break;
+        }
+        return retFunc;
+    }
+
+    // dumping/loading
+    public void DumpAllMapdata()
+    {
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, "Fetching all map data. Please wait, this may take up to 2 minutes.", () =>
+        {
+            var field1 = MapParent.CurrentConnection.ReadBytes(OffsetHelper.FieldItemStartLayer1, FieldSize);
+            var field2 = MapParent.CurrentConnection.ReadBytes(OffsetHelper.FieldItemStartLayer2, FieldSize);
+            var terrain = MapParent.CurrentConnection.ReadBytes(OffsetHelper.LandMakingMapStart, TerrainSize);
+            var outside = MapParent.CurrentConnection.ReadBytes(OffsetHelper.OutsideFieldStart, AcrePlusAdditionalParams);
+            var structure = MapParent.CurrentConnection.ReadBytes(OffsetHelper.MainFieldStructurStart, BuildingSize);
+
+            var sequentialData = field1.Concat(field2).Concat(terrain).Concat(outside).Concat(structure);
+
+            UI_NFSOACNHHandler.LastInstanceOfNFSO.SaveFile($"MapData_{DateTime.Now.ToString("yyyyddMM_HHmmss")}.bin", sequentialData.ToArray());
+        });
+    }
+
+    public void LoadMapdata() => UI_NFSOACNHHandler.LastInstanceOfNFSO.OpenAnyFile(SendMapdata, (FieldSize * 2) + TerrainSize + AcrePlusAdditionalParams + BuildingSize);
+    
+    private void SendMapdata(byte[] data)
+    {
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, "Sending all map data. Please wait, this may take up to 2 minutes.", () =>
+        {
+            var field1 = data.Take(FieldSize);
+            var field2 = data.Skip(FieldSize).Take(FieldSize);
+            var terrain = data.Skip(FieldSize).Take(TerrainSize);
+            var outside = data.Skip(FieldSize + TerrainSize).Take(AcrePlusAdditionalParams);
+            var structure = data.Skip(FieldSize + TerrainSize + AcrePlusAdditionalParams);
+
+            MapParent.CurrentConnection.WriteBytes(field1.ToArray(), OffsetHelper.FieldItemStartLayer1);
+            MapParent.CurrentConnection.WriteBytes(field2.ToArray(), OffsetHelper.FieldItemStartLayer2);
+            MapParent.CurrentConnection.WriteBytes(terrain.ToArray(), OffsetHelper.LandMakingMapStart);
+            MapParent.CurrentConnection.WriteBytes(outside.ToArray(), OffsetHelper.OutsideFieldStart);
+            MapParent.CurrentConnection.WriteBytes(structure.ToArray(), OffsetHelper.MainFieldStructurStart);
+        });
+    }
+
+    public void DumpBuildings() => UI_NFSOACNHHandler.LastInstanceOfNFSO.SaveFile($"MapBuildings_{DateTime.Now.ToString("yyyyddMM_HHmmss")}.nhb", structure);
+    public void LoadBuildings() => UI_NFSOACNHHandler.LastInstanceOfNFSO.OpenAnyFile(SendBuildings, BuildingSize);
+    private void SendBuildings(byte[] data)
+    {
+        structure = data;
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, "Sending buildings.", () =>
+        {
+            MapParent.CurrentConnection.WriteBytes(structure, OffsetHelper.MainFieldStructurStart);
+            generateAll();
+        });
+    }
+
+    public void DumpTerrain() => UI_NFSOACNHHandler.LastInstanceOfNFSO.SaveFile($"MapTerrain_{DateTime.Now.ToString("yyyyddMM_HHmmss")}.nht", terrain);
+    public void LoadTerrain() => UI_NFSOACNHHandler.LastInstanceOfNFSO.OpenAnyFile(SendTerrain, TerrainSize);
+    private void SendTerrain(byte[] data)
+    {
+        terrain = data;
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, "Sending terrain.", () =>
+        {
+            MapParent.CurrentConnection.WriteBytes(terrain, OffsetHelper.LandMakingMapStart);
+            generateAll();
+        });
+    }
+
+    public void DumpAcre() => UI_NFSOACNHHandler.LastInstanceOfNFSO.SaveFile($"MapAcre_{DateTime.Now.ToString("yyyyddMM_HHmmss")}.nha", acre_plaza.Take(AcreSizeAll).ToArray());
+    public void LoadAcre() => UI_NFSOACNHHandler.LastInstanceOfNFSO.OpenAnyFile(SendAcre, AcreSizeAll);
+    private void SendAcre(byte[] data)
+    {
+        Array.Copy(data, 0, acre_plaza, 0, AcreSizeAll);
+        UI_Popup.CurrentInstance.CreatePopupMessage(0.001f, "Sending outside acres.", () =>
+        {
+            MapParent.CurrentConnection.WriteBytes(acre_plaza, OffsetHelper.OutsideFieldStart);
+            generateAll();
+        });
+    }
+
+    public void SetPlaza()
+    {
+        if (uint.TryParse(PlazaX.text, out var plX))
+        {
+            if (uint.TryParse(PlazaY.text, out var plY))
+            {
+                var xb = BitConverter.GetBytes(plX);
+                var yb = BitConverter.GetBytes(plY);
+                Array.Copy(xb, 0, acre_plaza, AcreSizeAll + 4, xb.Length);
+                Array.Copy(yb, 0, acre_plaza, AcreSizeAll + 8, yb.Length);
+                UI_Popup.CurrentInstance.CreatePopupMessage(1f, "Updating plaza.", () =>
+                {
+                    MapParent.CurrentConnection.WriteBytes(acre_plaza, OffsetHelper.OutsideFieldStart);
+                    generateAll();
+                });
+                return;
+            }
+        }
+
+        UI_Popup.CurrentInstance.CreatePopupMessage(1f, "Unable to parse plaza values as u32.", () => {});
+    }
+}
+
+public static class ItemListExtensions
+{
+    public static List<List<T>> ChunkBy<T>(this List<T> source, int chunkSize)
+    {
+        return source
+            .Select((x, i) => new { Index = i, Value = x })
+            .GroupBy(x => x.Index / chunkSize)
+            .Select(x => x.Select(v => v.Value).ToList())
+            .ToList();
+    }
+
+    public static bool IsDifferent(this List<Item> items, List<Item> toCompare)
+    {
+        for(int i = 0; i < items.Count; ++i)
+        {
+            if (items[i].IsDifferentTo(toCompare[i]))
+                return true;
+        }
+
+        return false;
+    }
+}
