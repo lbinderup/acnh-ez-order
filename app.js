@@ -638,7 +638,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NnpcRoomMarker", "SequenceOnly"];
+const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone","MyDesignObject","MyDesignTexture","CommonFabricObject"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
