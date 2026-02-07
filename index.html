@@ -24,6 +24,7 @@
               <select id="sort-select">
                 <option value="alpha" selected>Alphabetic</option>
                 <option value="category">Category</option>
+                <option value="subcategory">Subcategory</option>
               </select>
             </label>
           </div>
@@ -36,6 +37,9 @@
           </label>
         </div>
         <div id="catalog-list" class="catalog-grid" aria-live="polite"></div>
+        <div class="catalog-actions">
+          <button id="add-all" type="button" class="secondary" hidden>Add all</button>
+        </div>
       </section>
 
       <section class="panel">
