@@ -222,6 +222,12 @@ button:disabled {
 
 .variant-picker {
   display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.variant-picker-row {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
 }
