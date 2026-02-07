@@ -10,6 +10,7 @@ const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
 const unsafeToggle = document.getElementById("unsafe-toggle");
 const sortSelect = document.getElementById("sort-select");
+const addAllButton = document.getElementById("add-all");
 
 const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 20;
@@ -990,8 +991,41 @@ const applySort = (items) => {
     });
     return sorted;
   }
+  if (sortMode === "subcategory") {
+    sorted.sort((a, b) => {
+      const subCompare = (a.subCategory || "").localeCompare(b.subCategory || "");
+      if (subCompare !== 0) {
+        return subCompare;
+      }
+      const superCompare = a.superCategory.localeCompare(b.superCategory);
+      if (superCompare !== 0) {
+        return superCompare;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    return sorted;
+  }
   sorted.sort((a, b) => a.name.localeCompare(b.name));
   return sorted;
+};
+
+const getOrderItemCount = (item) => {
+  const variantIndex = getSelectedVariantIndex(item);
+  const orderId = buildOrderId(item.hexId, variantIndex);
+  return orderItems.filter((orderItem) => orderItem.orderId === orderId).length;
+};
+
+const updateAddAllButton = () => {
+  if (!addAllButton) {
+    return;
+  }
+  if (filteredItems.length === 0) {
+    addAllButton.hidden = true;
+    return;
+  }
+  addAllButton.hidden = false;
+  const availableSlots = MAX_SLOTS - orderItems.length;
+  addAllButton.disabled = filteredItems.length > availableSlots;
 };
 
 const renderCatalog = () => {
@@ -1003,6 +1037,7 @@ const renderCatalog = () => {
     catalogList.innerHTML = isSearchEmpty
       ? "<p>Enter a search term to see items.</p>"
       : "<p>No items match your search.</p>";
+    updateAddAllButton();
     return;
   }
 
@@ -1037,10 +1072,18 @@ const renderCatalog = () => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "add-to-order";
-    button.textContent = "+";
+    button.textContent = "Add";
     button.setAttribute("aria-label", "Add to order");
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
+
+    const orderCount = getOrderItemCount(item);
+    if (orderCount > 0) {
+      const countBadge = document.createElement("span");
+      countBadge.className = "order-count";
+      countBadge.textContent = `x${orderCount}`;
+      card.append(countBadge);
+    }
 
     const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
@@ -1055,6 +1098,8 @@ const renderCatalog = () => {
     }
     catalogList.appendChild(card);
   });
+
+  updateAddAllButton();
 };
 
 const renderOrder = () => {
@@ -1116,6 +1161,28 @@ const addToOrder = (item) => {
     selectedVariantIndex: variantIndex,
     selectedSubVariantIndex: subVariantIndex,
     orderId: buildOrderId(item.hexId, variantIndex),
+  });
+  renderOrder();
+  renderCatalog();
+};
+
+const addItemsToOrder = (items) => {
+  const availableSlots = MAX_SLOTS - orderItems.length;
+  if (items.length === 0 || availableSlots <= 0) {
+    return;
+  }
+  if (items.length > availableSlots) {
+    return;
+  }
+  items.forEach((item) => {
+    const variantIndex = getSelectedVariantIndex(item);
+    const subVariantIndex = getSelectedSubVariantIndex(item);
+    orderItems.push({
+      ...item,
+      selectedVariantIndex: variantIndex,
+      selectedSubVariantIndex: subVariantIndex,
+      orderId: buildOrderId(item.hexId, variantIndex),
+    });
   });
   renderOrder();
   renderCatalog();
@@ -1423,6 +1490,15 @@ if (sortSelect) {
   sortSelect.addEventListener("change", () => {
     sortMode = sortSelect.value;
     filterCatalog();
+  });
+}
+
+if (addAllButton) {
+  addAllButton.addEventListener("click", () => {
+    if (addAllButton.disabled) {
+      return;
+    }
+    addItemsToOrder(filteredItems);
   });
 }
 
