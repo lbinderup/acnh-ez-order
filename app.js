@@ -589,6 +589,55 @@ const buildDisplayNames = (rawNames) => {
   });
 };
 
+const normalizePreviewKey = (value) =>
+  value
+    .toLowerCase()
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const applyPreviewIconOverrides = (items) => {
+  const flowerStemMap = new Map();
+  const shrubYoungMap = new Map();
+
+  items.forEach((item) => {
+    if (item.subCategory === "Flowers") {
+      const stemMatch = item.name.match(/^(.*)\s+Stems$/i);
+      if (stemMatch) {
+        flowerStemMap.set(normalizePreviewKey(stemMatch[1]), item.hexId);
+      }
+    }
+    if (item.subCategory === "Shrubs") {
+      const youngMatch = item.name.match(/^Young\s+(.*)$/i);
+      if (youngMatch) {
+        shrubYoungMap.set(normalizePreviewKey(youngMatch[1]), item.hexId);
+      }
+    }
+  });
+
+  items.forEach((item) => {
+    if (item.subCategory === "Flowers") {
+      const stageMatch = item.name.match(/^(.*)\s+(Buds|Sprouts|Plant)$/i);
+      if (stageMatch) {
+        const stemHexId = flowerStemMap.get(normalizePreviewKey(stageMatch[1]));
+        if (stemHexId) {
+          item.previewHexId = stemHexId;
+        }
+      }
+      return;
+    }
+    if (item.subCategory === "Shrubs") {
+      const shrubStageMatch = item.name.match(/^(.*)\s+(Bush|Nursery)$/i);
+      if (shrubStageMatch) {
+        const youngHexId = shrubYoungMap.get(normalizePreviewKey(shrubStageMatch[1]));
+        if (youngHexId) {
+          item.previewHexId = youngHexId;
+        }
+      }
+    }
+  });
+};
+
 const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NnpcRoomMarker", "SequenceOnly"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
@@ -807,7 +856,7 @@ const buildSpriteFrame = (item, usePreview = true, delayMs = 0) => {
   if (usePreview) {
     assignSpriteWithDelay(
       image,
-      item.hexId,
+      getPreviewHexId(item),
       getSelectedVariantIndex(item),
       getSelectedSubVariantIndex(item),
       delayMs
@@ -863,6 +912,8 @@ const getSelectedSubVariantIndex = (item) => {
   }
   return item.selectedSubVariantIndex;
 };
+
+const getPreviewHexId = (item) => item.previewHexId || item.hexId;
 
 const getVariantMetaLabel = (item) => {
   const variantIndex = getSelectedVariantIndex(item);
@@ -954,7 +1005,10 @@ const buildVariantPicker = (item) => {
         selectedIndex: selectedSubVariantIndex,
         label: "subvariant",
         onSelect: (subVariantIndex) => {
+          const currentVariantIndex = getSelectedVariantIndex(item);
+          item.selectedVariantIndex = currentVariantIndex;
           item.selectedSubVariantIndex = subVariantIndex;
+          item.orderId = buildOrderId(item.hexId, currentVariantIndex);
           renderCatalog();
         },
       })
@@ -1614,6 +1668,7 @@ const init = async () => {
   await loadUnitIconAssets();
   await loadSpriteVariants();
   catalogItems = await loadCatalogItems();
+  applyPreviewIconOverrides(catalogItems);
   categoryData = buildCategoryData(catalogItems);
   setDefaultCategoryFilters();
   filteredItems = [];
