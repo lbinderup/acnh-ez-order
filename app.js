@@ -1281,11 +1281,17 @@ const renderOrderDrawer = () => {
   }
 
   if (orderItems.length === 0) {
+    isDrawerCollapsed = false;
+    orderDrawer.classList.add("is-hidden");
     orderDrawer.hidden = true;
+    if (orderDrawerList) {
+      orderDrawerList.innerHTML = "";
+    }
     return;
   }
 
   orderDrawer.hidden = false;
+  orderDrawer.classList.remove("is-hidden");
   orderDrawer.classList.toggle("is-collapsed", isDrawerCollapsed);
 
   if (drawerSlotCount) {
