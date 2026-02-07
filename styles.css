@@ -222,8 +222,8 @@ button.add-to-order:disabled {
 }
 
 button.add-variants {
-  background: #90a4ae;
-  color: #102027;
+  background: #003975;
+  color: #fff;
   font-size: 0.85rem;
   padding: 0.35rem 0.7rem;
   border-radius: 8px;

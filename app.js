@@ -988,7 +988,9 @@ const buildVariantPicker = (item) => {
           const nextSubVariants = item.subVariantsByVariant
             ? item.subVariantsByVariant.get(variantIndex) || []
             : [];
-          item.selectedSubVariantIndex = nextSubVariants.length > 0 ? nextSubVariants[0] : null;
+          if (!nextSubVariants.includes(item.selectedSubVariantIndex)) {
+            item.selectedSubVariantIndex = null;
+          }
           item.orderId = buildOrderId(item.hexId, variantIndex);
           renderCatalog();
         },
