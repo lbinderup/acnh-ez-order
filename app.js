@@ -19,15 +19,14 @@ const unitIconCache = new Map();
 const unitIconLoadPromises = new Map();
 
 const DATA_PATHS = {
-  itemNames: "SourceCodeAssets/Resources/NHSE/text/en/text_item_en.txt",
-  itemKinds: "SourceCodeAssets/Resources/NHSE/byte/item_kind.bytes",
-  spriteDump: "SourceCodeAssets/Resources/SpriteLoading/imagedump_menu.bytes",
-  spriteHeader: "SourceCodeAssets/Resources/SpriteLoading/imagedump_menuheader.txt",
-  spritePointer: "SourceCodeAssets/Resources/SpriteLoading/SpritePointer_menu.txt",
-  unitIconDump: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/imagedump_manual.bytes",
-  unitIconHeader: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/imagedump_manualheader.txt",
-  unitIconPointer: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/BeriPointer_unit.txt",
+  itemNames: "data/nhse/text_item_en.txt",
+  itemKinds: "data/nhse/item_kind.bytes",
+  unitIconDump: "data/unit-icons/imagedump_manual.bytes",
+  unitIconHeader: "data/unit-icons/imagedump_manualheader.txt",
+  unitIconPointer: "data/unit-icons/BeriPointer_unit.txt",
 };
+
+const SPRITE_BASE_PATH = "resources/sprites";
 
 const ITEM_KIND_NAMES = [
   "Bottoms_Long",
@@ -239,9 +238,6 @@ const ITEM_KIND_NAMES = [
   "UnitIcon_FlwTulip",
 ];
 
-let spriteDumpBytes = null;
-let spriteHeaderMap = null;
-let spritePointerMap = null;
 let unitIconDumpBytes = null;
 let unitIconHeaderMap = null;
 let unitIconPointerMap = null;
@@ -255,12 +251,6 @@ const DEFAULT_SPRITE =
       <circle cx="34" cy="34" r="8" fill="#cbd5e1"/>
     </svg>`
   );
-
-const createSlug = (text) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
 
 const formatKindName = (kindName) =>
   kindName
@@ -320,17 +310,6 @@ const parsePointerMap = (text) => {
   return map;
 };
 
-const loadSpriteAssets = async () => {
-  const [dumpResponse, headerResponse, pointerResponse] = await Promise.all([
-    fetch(DATA_PATHS.spriteDump),
-    fetch(DATA_PATHS.spriteHeader),
-    fetch(DATA_PATHS.spritePointer),
-  ]);
-  spriteDumpBytes = new Uint8Array(await dumpResponse.arrayBuffer());
-  spriteHeaderMap = parseHeaderMap(await headerResponse.text());
-  spritePointerMap = parsePointerMap(await pointerResponse.text());
-};
-
 const loadUnitIconAssets = async () => {
   const [dumpResponse, headerResponse, pointerResponse] = await Promise.all([
     fetch(DATA_PATHS.unitIconDump),
@@ -340,26 +319,6 @@ const loadUnitIconAssets = async () => {
   unitIconDumpBytes = new Uint8Array(await dumpResponse.arrayBuffer());
   unitIconHeaderMap = parseHeaderMap(await headerResponse.text());
   unitIconPointerMap = parsePointerMap(await pointerResponse.text());
-};
-
-const getSpriteUrl = async (itemId) => {
-  if (!spriteDumpBytes || !spriteHeaderMap || !spritePointerMap) {
-    return null;
-  }
-  const idHex = itemId.toString(16).toUpperCase();
-  const spriteKey = spritePointerMap.get(idHex);
-  if (!spriteKey) {
-    return null;
-  }
-  const range = spriteHeaderMap.get(spriteKey);
-  if (!range) {
-    return null;
-  }
-  const slice = spriteDumpBytes.slice(range.start, range.end);
-  if (slice.length === 0) {
-    return null;
-  }
-  return URL.createObjectURL(new Blob([slice], { type: "image/png" }));
 };
 
 const getUnitIconUrl = async (kindIndex) => {
@@ -382,30 +341,54 @@ const getUnitIconUrl = async (kindIndex) => {
   return URL.createObjectURL(new Blob([slice], { type: "image/png" }));
 };
 
-const assignSprite = (image, itemId) => {
-  if (spriteCache.has(itemId)) {
-    const cached = spriteCache.get(itemId);
+const formatItemHexId = (itemId) => itemId.toString(16).toUpperCase();
+
+const buildSpriteCandidates = (hexId) => [
+  `${SPRITE_BASE_PATH}/${hexId}_0.png`,
+  `${SPRITE_BASE_PATH}/${hexId}.png`,
+  `${SPRITE_BASE_PATH}/${hexId}_0_0.png`,
+];
+
+const resolveSpriteUrl = (hexId) =>
+  new Promise((resolve) => {
+    const candidates = buildSpriteCandidates(hexId);
+    const attempt = (index) => {
+      if (index >= candidates.length) {
+        resolve(null);
+        return;
+      }
+      const probe = new Image();
+      probe.onload = () => resolve(candidates[index]);
+      probe.onerror = () => attempt(index + 1);
+      probe.src = candidates[index];
+    };
+    attempt(0);
+  });
+
+const assignSprite = (image, hexId) => {
+  if (spriteCache.has(hexId)) {
+    const cached = spriteCache.get(hexId);
     image.src = cached || DEFAULT_SPRITE;
     return;
   }
 
   image.src = DEFAULT_SPRITE;
-  if (!spriteLoadPromises.has(itemId)) {
-    const promise = getSpriteUrl(itemId)
+  if (!spriteLoadPromises.has(hexId)) {
+    const promise = resolveSpriteUrl(hexId)
       .then((url) => {
-        spriteCache.set(itemId, url);
-        spriteLoadPromises.delete(itemId);
+        spriteCache.set(hexId, url);
+        spriteLoadPromises.delete(hexId);
         return url;
       })
       .catch(() => {
-        spriteCache.set(itemId, null);
-        spriteLoadPromises.delete(itemId);
+        spriteCache.set(hexId, null);
+        spriteLoadPromises.delete(hexId);
         return null;
       });
-    spriteLoadPromises.set(itemId, promise);
+    spriteLoadPromises.set(hexId, promise);
   }
 
-  spriteLoadPromises.get(itemId).then((url) => {
+  spriteLoadPromises.get(hexId).then((url) => {
     if (url) {
       image.src = url;
     }
@@ -459,7 +442,7 @@ const buildSpriteFrame = (item) => {
   const image = document.createElement("img");
   image.className = "item-sprite";
   image.alt = item.name;
-  assignSprite(image, item.id);
+  assignSprite(image, item.hexId);
 
   const typeIcon = document.createElement("img");
   typeIcon.className = "type-icon";
@@ -538,14 +521,14 @@ const renderOrder = () => {
 
 const updateOrderCommand = () => {
   if (orderItems.length === 0) {
-    orderCommand.textContent = "$order";
+    orderCommand.textContent = "$ordercat";
     copyOrderButton.disabled = true;
     copyCommandButton.disabled = true;
     return;
   }
 
-  const orderNames = orderItems.map((item) => item.commandName || createSlug(item.name));
-  orderCommand.textContent = `$order ${orderNames.join(" ")}`;
+  const orderIds = orderItems.map((item) => item.orderId);
+  orderCommand.textContent = `$ordercat ${orderIds.join(" ")}`;
   copyOrderButton.disabled = false;
   copyCommandButton.disabled = false;
 };
@@ -616,8 +599,11 @@ const loadCatalogItems = async () => {
       kindIndex !== undefined && ITEM_KIND_NAMES[kindIndex]
         ? formatKindName(ITEM_KIND_NAMES[kindIndex])
         : "Unknown";
+    const hexId = formatItemHexId(index);
     return {
       id: index,
+      hexId,
+      orderId: hexId,
       kindIndex,
       name,
       category: kindName,
@@ -627,7 +613,7 @@ const loadCatalogItems = async () => {
 };
 
 const init = async () => {
-  await Promise.all([loadSpriteAssets(), loadUnitIconAssets()]);
+  await loadUnitIconAssets();
   catalogItems = await loadCatalogItems();
   filteredItems = [...catalogItems];
   populateCategories();
