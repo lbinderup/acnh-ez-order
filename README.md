@@ -6,6 +6,8 @@ This project is a static web app that lets you search an Animal Crossing: New Ho
 
 1. Update `data/items.json` with your full catalog (exported from your Unity project).
 2. Download sprites into the `sprites/` directory and set each item’s `sprite` field to match the local file path.
+   - If you have the Unity `imagedump.dmp` bundle, you can extract a folder of PNGs with
+     `python scripts/decompile_imagedump.py --dump path/to/imagedump.dmp --header path/to/imagedump.dmp.header --pointer path/to/SpritePointer.txt`.
 3. Host the repo on GitHub Pages and open `index.html`.
 
 ## Catalog data format

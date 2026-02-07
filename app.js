@@ -15,6 +15,8 @@ let filteredItems = [];
 const orderItems = [];
 const spriteCache = new Map();
 const spriteLoadPromises = new Map();
+const unitIconCache = new Map();
+const unitIconLoadPromises = new Map();
 
 const DATA_PATHS = {
   itemNames: "SourceCodeAssets/Resources/NHSE/text/en/text_item_en.txt",
@@ -22,6 +24,9 @@ const DATA_PATHS = {
   spriteDump: "SourceCodeAssets/Resources/SpriteLoading/imagedump_menu.bytes",
   spriteHeader: "SourceCodeAssets/Resources/SpriteLoading/imagedump_menuheader.txt",
   spritePointer: "SourceCodeAssets/Resources/SpriteLoading/SpritePointer_menu.txt",
+  unitIconDump: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/imagedump_manual.bytes",
+  unitIconHeader: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/imagedump_manualheader.txt",
+  unitIconPointer: "SourceCodeAssets/Resources/SpriteLoading/UnitIcons/BeriPointer_unit.txt",
 };
 
 const ITEM_KIND_NAMES = [
@@ -237,6 +242,9 @@ const ITEM_KIND_NAMES = [
 let spriteDumpBytes = null;
 let spriteHeaderMap = null;
 let spritePointerMap = null;
+let unitIconDumpBytes = null;
+let unitIconHeaderMap = null;
+let unitIconPointerMap = null;
 
 const DEFAULT_SPRITE =
   "data:image/svg+xml;utf8," +
@@ -323,6 +331,17 @@ const loadSpriteAssets = async () => {
   spritePointerMap = parsePointerMap(await pointerResponse.text());
 };
 
+const loadUnitIconAssets = async () => {
+  const [dumpResponse, headerResponse, pointerResponse] = await Promise.all([
+    fetch(DATA_PATHS.unitIconDump),
+    fetch(DATA_PATHS.unitIconHeader),
+    fetch(DATA_PATHS.unitIconPointer),
+  ]);
+  unitIconDumpBytes = new Uint8Array(await dumpResponse.arrayBuffer());
+  unitIconHeaderMap = parseHeaderMap(await headerResponse.text());
+  unitIconPointerMap = parsePointerMap(await pointerResponse.text());
+};
+
 const getSpriteUrl = async (itemId) => {
   if (!spriteDumpBytes || !spriteHeaderMap || !spritePointerMap) {
     return null;
@@ -337,6 +356,26 @@ const getSpriteUrl = async (itemId) => {
     return null;
   }
   const slice = spriteDumpBytes.slice(range.start, range.end);
+  if (slice.length === 0) {
+    return null;
+  }
+  return URL.createObjectURL(new Blob([slice], { type: "image/png" }));
+};
+
+const getUnitIconUrl = async (kindIndex) => {
+  if (!unitIconDumpBytes || !unitIconHeaderMap || !unitIconPointerMap) {
+    return null;
+  }
+  const kindHex = kindIndex.toString(16).toUpperCase();
+  const spriteKey = unitIconPointerMap.get(kindHex);
+  if (!spriteKey) {
+    return null;
+  }
+  const range = unitIconHeaderMap.get(spriteKey);
+  if (!range) {
+    return null;
+  }
+  const slice = unitIconDumpBytes.slice(range.start, range.end);
   if (slice.length === 0) {
     return null;
   }
@@ -373,6 +412,65 @@ const assignSprite = (image, itemId) => {
   });
 };
 
+const assignUnitIcon = (image, kindIndex) => {
+  if (kindIndex === undefined || kindIndex === null) {
+    image.hidden = true;
+    return;
+  }
+  if (unitIconCache.has(kindIndex)) {
+    const cached = unitIconCache.get(kindIndex);
+    if (cached) {
+      image.src = cached;
+      image.hidden = false;
+    } else {
+      image.hidden = true;
+    }
+    return;
+  }
+
+  image.hidden = true;
+  if (!unitIconLoadPromises.has(kindIndex)) {
+    const promise = getUnitIconUrl(kindIndex)
+      .then((url) => {
+        unitIconCache.set(kindIndex, url);
+        unitIconLoadPromises.delete(kindIndex);
+        return url;
+      })
+      .catch(() => {
+        unitIconCache.set(kindIndex, null);
+        unitIconLoadPromises.delete(kindIndex);
+        return null;
+      });
+    unitIconLoadPromises.set(kindIndex, promise);
+  }
+
+  unitIconLoadPromises.get(kindIndex).then((url) => {
+    if (url) {
+      image.src = url;
+      image.hidden = false;
+    }
+  });
+};
+
+const buildSpriteFrame = (item) => {
+  const frame = document.createElement("div");
+  frame.className = "sprite-frame";
+
+  const image = document.createElement("img");
+  image.className = "item-sprite";
+  image.alt = item.name;
+  assignSprite(image, item.id);
+
+  const typeIcon = document.createElement("img");
+  typeIcon.className = "type-icon";
+  typeIcon.alt = "";
+  typeIcon.setAttribute("aria-hidden", "true");
+  assignUnitIcon(typeIcon, item.kindIndex);
+
+  frame.append(image, typeIcon);
+  return frame;
+};
+
 const renderCatalog = () => {
   catalogList.innerHTML = "";
   if (filteredItems.length === 0) {
@@ -384,9 +482,7 @@ const renderCatalog = () => {
     const card = document.createElement("article");
     card.className = "catalog-card";
 
-    const image = document.createElement("img");
-    image.alt = item.name;
-    assignSprite(image, item.id);
+    const spriteFrame = buildSpriteFrame(item);
 
     const title = document.createElement("h3");
     title.textContent = item.name;
@@ -401,7 +497,7 @@ const renderCatalog = () => {
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
 
-    card.append(image, title, meta, button);
+    card.append(spriteFrame, title, meta, button);
     catalogList.appendChild(card);
   });
 };
@@ -418,9 +514,7 @@ const renderOrder = () => {
     const card = document.createElement("article");
     card.className = "order-card";
 
-    const image = document.createElement("img");
-    image.alt = item.name;
-    assignSprite(image, item.id);
+    const spriteFrame = buildSpriteFrame(item);
 
     const title = document.createElement("h3");
     title.textContent = `${index + 1}. ${item.name}`;
@@ -435,7 +529,7 @@ const renderOrder = () => {
     button.textContent = "Remove";
     button.addEventListener("click", () => removeFromOrder(index));
 
-    card.append(image, title, meta, button);
+    card.append(spriteFrame, title, meta, button);
     orderSlots.appendChild(card);
   });
 
@@ -524,6 +618,7 @@ const loadCatalogItems = async () => {
         : "Unknown";
     return {
       id: index,
+      kindIndex,
       name,
       category: kindName,
       variant: "",
@@ -532,7 +627,7 @@ const loadCatalogItems = async () => {
 };
 
 const init = async () => {
-  await loadSpriteAssets();
+  await Promise.all([loadSpriteAssets(), loadUnitIconAssets()]);
   catalogItems = await loadCatalogItems();
   filteredItems = [...catalogItems];
   populateCategories();
