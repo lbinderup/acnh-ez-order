@@ -138,6 +138,10 @@ select {
   min-width: 220px;
 }
 
+.category-dropdown[hidden] {
+  display: none;
+}
+
 .secondary-filters {
   margin-top: 0.75rem;
   display: flex;
@@ -223,6 +227,10 @@ button.add-variants {
   font-size: 0.85rem;
   padding: 0.35rem 0.7rem;
   border-radius: 8px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .catalog-card-actions {
@@ -373,6 +381,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  margin-bottom: 0.4rem;
 }
 
 .variant-picker-row {
