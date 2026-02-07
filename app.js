@@ -645,7 +645,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone","MyDesignObject","MyDesignTexture","CommonFabricObject"];
+const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone","MyDesignObject","MyDesignTexture","CommonFabricObject"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
@@ -661,6 +661,10 @@ const isUnsafeItem = (name, rawKindName, superCategory) => {
   }
   if (superCategory === "Clothing" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
     return true;
+  }
+  if (getSubCategory(rawKindName, superCategory) === "Infrastructure")
+  {
+	  return true;
   }
   return UNSAFE_KIND_TOKENS.some((token) => rawKindName.includes(token));
 };
@@ -925,7 +929,7 @@ const getPreviewHexId = (item) => item.previewHexId || item.hexId;
 const getVariantMetaLabel = (item) => {
   const variantIndex = getSelectedVariantIndex(item);
   if (variantIndex === null || variantIndex === undefined) {
-    return "Default";
+    return null;
   }
   const subVariantIndex = getSelectedSubVariantIndex(item);
   if (subVariantIndex === null || subVariantIndex === undefined) {
@@ -1174,7 +1178,14 @@ const renderCatalog = () => {
 
       meta = document.createElement("div");
       meta.className = "catalog-meta";
+	  var variantLabel = getVariantMetaLabel(item);
+	  
+	  if (variantLabel === null) {
+      meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel}`;
+	  }
+	  else {
       meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+	  }
     } else {
       title = document.createElement("div");
       title.className = "catalog-name-box";
