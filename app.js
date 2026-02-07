@@ -10,7 +10,8 @@ const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
 
 const MAX_SLOTS = 40;
-const MAX_PREVIEW_RESULTS = 8;
+const MAX_PREVIEW_RESULTS = 20;
+const PREVIEW_LOAD_DELAY_MS = 50;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 let catalogItems = [];
 let filteredItems = [];
@@ -448,12 +449,12 @@ const loadUnitIconAssets = async () => {
   unitIconPointerMap = parsePointerMap(await pointerResponse.text());
 };
 
-const getUnitIconUrl = async (kindIndex) => {
+const getUnitIconUrl = async (itemId) => {
   if (!unitIconDumpBytes || !unitIconHeaderMap || !unitIconPointerMap) {
     return null;
   }
-  const kindHex = kindIndex.toString(16).toUpperCase();
-  const spriteKey = unitIconPointerMap.get(kindHex);
+  const itemHex = itemId.toString(16).toUpperCase();
+  const spriteKey = unitIconPointerMap.get(itemHex);
   if (!spriteKey) {
     return null;
   }
@@ -470,9 +471,12 @@ const getUnitIconUrl = async (kindIndex) => {
 
 const formatItemHexId = (itemId) => itemId.toString(16).toUpperCase();
 
-const buildSpriteCandidates = (hexId, variantIndex) => {
+const buildSpriteCandidates = (hexId, variantIndex, subVariantIndex) => {
   const candidates = [];
   if (variantIndex !== null && variantIndex !== undefined) {
+    if (subVariantIndex !== null && subVariantIndex !== undefined) {
+      candidates.push(`${SPRITE_BASE_PATH}/${hexId}_${variantIndex}_${subVariantIndex}.png`);
+    }
     candidates.push(`${SPRITE_BASE_PATH}/${hexId}_${variantIndex}.png`);
   }
   candidates.push(`${SPRITE_BASE_PATH}/${hexId}.png`);
@@ -481,9 +485,9 @@ const buildSpriteCandidates = (hexId, variantIndex) => {
   return candidates;
 };
 
-const resolveSpriteUrl = (hexId, variantIndex) =>
+const resolveSpriteUrl = (hexId, variantIndex, subVariantIndex) =>
   new Promise((resolve) => {
-    const candidates = buildSpriteCandidates(hexId, variantIndex);
+    const candidates = buildSpriteCandidates(hexId, variantIndex, subVariantIndex);
     const attempt = (index) => {
       if (index >= candidates.length) {
         resolve(null);
@@ -497,11 +501,18 @@ const resolveSpriteUrl = (hexId, variantIndex) =>
     attempt(0);
   });
 
-const assignSprite = (image, hexId, variantIndex) => {
-  const cacheKey =
-    variantIndex !== null && variantIndex !== undefined
-      ? `${hexId}_${variantIndex}`
-      : hexId;
+const buildSpriteCacheKey = (hexId, variantIndex, subVariantIndex) => {
+  if (variantIndex === null || variantIndex === undefined) {
+    return hexId;
+  }
+  if (subVariantIndex === null || subVariantIndex === undefined) {
+    return `${hexId}_${variantIndex}`;
+  }
+  return `${hexId}_${variantIndex}_${subVariantIndex}`;
+};
+
+const assignSprite = (image, hexId, variantIndex, subVariantIndex) => {
+  const cacheKey = buildSpriteCacheKey(hexId, variantIndex, subVariantIndex);
   if (spriteCache.has(cacheKey)) {
     const cached = spriteCache.get(cacheKey);
     image.src = cached || DEFAULT_SPRITE;
@@ -510,7 +521,7 @@ const assignSprite = (image, hexId, variantIndex) => {
 
   image.src = DEFAULT_SPRITE;
   if (!spriteLoadPromises.has(cacheKey)) {
-    const promise = resolveSpriteUrl(hexId, variantIndex)
+    const promise = resolveSpriteUrl(hexId, variantIndex, subVariantIndex)
       .then((url) => {
         spriteCache.set(cacheKey, url);
         spriteLoadPromises.delete(cacheKey);
@@ -531,13 +542,13 @@ const assignSprite = (image, hexId, variantIndex) => {
   });
 };
 
-const assignUnitIcon = (image, kindIndex) => {
-  if (kindIndex === undefined || kindIndex === null) {
+const assignUnitIcon = (image, itemId) => {
+  if (itemId === undefined || itemId === null) {
     image.hidden = true;
     return;
   }
-  if (unitIconCache.has(kindIndex)) {
-    const cached = unitIconCache.get(kindIndex);
+  if (unitIconCache.has(itemId)) {
+    const cached = unitIconCache.get(itemId);
     if (cached) {
       image.src = cached;
       image.hidden = false;
@@ -548,22 +559,22 @@ const assignUnitIcon = (image, kindIndex) => {
   }
 
   image.hidden = true;
-  if (!unitIconLoadPromises.has(kindIndex)) {
-    const promise = getUnitIconUrl(kindIndex)
+  if (!unitIconLoadPromises.has(itemId)) {
+    const promise = getUnitIconUrl(itemId)
       .then((url) => {
-        unitIconCache.set(kindIndex, url);
-        unitIconLoadPromises.delete(kindIndex);
+        unitIconCache.set(itemId, url);
+        unitIconLoadPromises.delete(itemId);
         return url;
       })
       .catch(() => {
-        unitIconCache.set(kindIndex, null);
-        unitIconLoadPromises.delete(kindIndex);
+        unitIconCache.set(itemId, null);
+        unitIconLoadPromises.delete(itemId);
         return null;
       });
-    unitIconLoadPromises.set(kindIndex, promise);
+    unitIconLoadPromises.set(itemId, promise);
   }
 
-  unitIconLoadPromises.get(kindIndex).then((url) => {
+  unitIconLoadPromises.get(itemId).then((url) => {
     if (url) {
       image.src = url;
       image.hidden = false;
@@ -571,7 +582,18 @@ const assignUnitIcon = (image, kindIndex) => {
   });
 };
 
-const buildSpriteFrame = (item, usePreview = true) => {
+const assignSpriteWithDelay = (image, hexId, variantIndex, subVariantIndex, delayMs) => {
+  if (!delayMs || delayMs <= 0) {
+    assignSprite(image, hexId, variantIndex, subVariantIndex);
+    return;
+  }
+  image.src = DEFAULT_SPRITE;
+  window.setTimeout(() => {
+    assignSprite(image, hexId, variantIndex, subVariantIndex);
+  }, delayMs);
+};
+
+const buildSpriteFrame = (item, usePreview = true, delayMs = 0) => {
   const frame = document.createElement("div");
   frame.className = "sprite-frame";
 
@@ -579,7 +601,13 @@ const buildSpriteFrame = (item, usePreview = true) => {
   image.className = "item-sprite";
   image.alt = item.name;
   if (usePreview) {
-    assignSprite(image, item.hexId, item.selectedVariantIndex);
+    assignSpriteWithDelay(
+      image,
+      item.hexId,
+      getSelectedVariantIndex(item),
+      getSelectedSubVariantIndex(item),
+      delayMs
+    );
   } else {
     image.hidden = true;
   }
@@ -588,7 +616,7 @@ const buildSpriteFrame = (item, usePreview = true) => {
   typeIcon.className = "type-icon";
   typeIcon.alt = "";
   typeIcon.setAttribute("aria-hidden", "true");
-  assignUnitIcon(typeIcon, item.kindIndex);
+  assignUnitIcon(typeIcon, item.id);
 
   frame.append(image, typeIcon);
   return frame;
@@ -611,43 +639,123 @@ const getSelectedVariantIndex = (item) => {
   return item.selectedVariantIndex;
 };
 
+const getSelectedSubVariantIndex = (item) => {
+  if (!item.subVariantsByVariant || item.subVariantsByVariant.size === 0) {
+    return null;
+  }
+  const variantIndex = getSelectedVariantIndex(item);
+  if (variantIndex === null || variantIndex === undefined) {
+    return null;
+  }
+  const subVariants = item.subVariantsByVariant.get(variantIndex) || [];
+  if (subVariants.length === 0) {
+    return null;
+  }
+  if (item.selectedSubVariantIndex === null || item.selectedSubVariantIndex === undefined) {
+    return subVariants[0];
+  }
+  if (!subVariants.includes(item.selectedSubVariantIndex)) {
+    return subVariants[0];
+  }
+  return item.selectedSubVariantIndex;
+};
+
 const getVariantMetaLabel = (item) => {
   const variantIndex = getSelectedVariantIndex(item);
   if (variantIndex === null || variantIndex === undefined) {
     return "Default";
   }
-  return `Variant ${variantIndex}`;
+  const subVariantIndex = getSelectedSubVariantIndex(item);
+  if (subVariantIndex === null || subVariantIndex === undefined) {
+    return `Variant ${variantIndex}`;
+  }
+  return `Variant ${variantIndex} · Subvariant ${subVariantIndex}`;
 };
 
-const buildVariantPicker = (item) => {
-  if (!item.variants || item.variants.length <= 1) {
-    return null;
-  }
-  const container = document.createElement("div");
-  container.className = "variant-picker";
+const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect }) => {
+  const row = document.createElement("div");
+  row.className = "variant-picker-row";
 
-  item.variants.forEach((variant) => {
+  variants.forEach((variant) => {
+    const variantIndex = typeof variant === "number" ? variant : variant.index;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "variant-option";
-    if (variant.index === getSelectedVariantIndex(item)) {
+    if (variantIndex === selectedIndex) {
       button.classList.add("is-selected");
     }
 
     const image = document.createElement("img");
     image.className = "variant-sprite";
-    image.alt = `${item.name} variant ${variant.index}`;
-    assignSprite(image, item.hexId, variant.index);
+    image.alt = `${item.name} ${label} ${variantIndex}`;
+    if (label === "subvariant") {
+      assignSprite(image, item.hexId, getSelectedVariantIndex(item), variantIndex);
+    } else {
+      const previewSubVariant = item.subVariantsByVariant
+        ? (item.subVariantsByVariant.get(variantIndex) || [])[0] ?? null
+        : null;
+      assignSprite(image, item.hexId, variantIndex, previewSubVariant);
+    }
 
     button.appendChild(image);
-    button.addEventListener("click", () => {
-      item.selectedVariantIndex = variant.index;
-      item.orderId = buildOrderId(item.hexId, variant.index);
-      renderCatalog();
-    });
+    button.addEventListener("click", () => onSelect(variantIndex));
 
-    container.appendChild(button);
+    row.appendChild(button);
   });
+
+  return row;
+};
+
+const buildVariantPicker = (item) => {
+  const primaryVariants = item.variants || [];
+  const selectedVariantIndex = getSelectedVariantIndex(item);
+  const subVariants =
+    item.subVariantsByVariant && selectedVariantIndex !== null && selectedVariantIndex !== undefined
+      ? item.subVariantsByVariant.get(selectedVariantIndex) || []
+      : [];
+  const hasPrimaryPicker = primaryVariants.length > 1;
+  const hasSubPicker = subVariants.length > 1;
+  if (!hasPrimaryPicker && !hasSubPicker) {
+    return null;
+  }
+  const container = document.createElement("div");
+  container.className = "variant-picker";
+
+  if (hasPrimaryPicker) {
+    container.appendChild(
+      buildVariantRow({
+        item,
+        variants: primaryVariants,
+        selectedIndex: selectedVariantIndex,
+        label: "variant",
+        onSelect: (variantIndex) => {
+          item.selectedVariantIndex = variantIndex;
+          const nextSubVariants = item.subVariantsByVariant
+            ? item.subVariantsByVariant.get(variantIndex) || []
+            : [];
+          item.selectedSubVariantIndex = nextSubVariants.length > 0 ? nextSubVariants[0] : null;
+          item.orderId = buildOrderId(item.hexId, variantIndex);
+          renderCatalog();
+        },
+      })
+    );
+  }
+
+  if (hasSubPicker) {
+    const selectedSubVariantIndex = getSelectedSubVariantIndex(item);
+    container.appendChild(
+      buildVariantRow({
+        item,
+        variants: subVariants,
+        selectedIndex: selectedSubVariantIndex,
+        label: "subvariant",
+        onSelect: (subVariantIndex) => {
+          item.selectedSubVariantIndex = subVariantIndex;
+          renderCatalog();
+        },
+      })
+    );
+  }
 
   return container;
 };
@@ -664,14 +772,18 @@ const renderCatalog = () => {
     return;
   }
 
-  filteredItems.forEach((item) => {
+  filteredItems.forEach((item, index) => {
     const card = document.createElement("article");
     card.className = "catalog-card";
     if (!usePreviews) {
       card.classList.add("condensed-card");
     }
 
-    const spriteFrame = buildSpriteFrame(item, usePreviews);
+    const spriteFrame = buildSpriteFrame(
+      item,
+      usePreviews,
+      usePreviews ? index * PREVIEW_LOAD_DELAY_MS : 0
+    );
 
     let title;
     let meta;
@@ -762,9 +874,11 @@ const addToOrder = (item) => {
     return;
   }
   const variantIndex = getSelectedVariantIndex(item);
+  const subVariantIndex = getSelectedSubVariantIndex(item);
   orderItems.push({
     ...item,
     selectedVariantIndex: variantIndex,
+    selectedSubVariantIndex: subVariantIndex,
     orderId: buildOrderId(item.hexId, variantIndex),
   });
   renderOrder();
@@ -846,12 +960,38 @@ const copyToClipboard = async (text) => {
   }
 };
 
+const ensureSpriteVariantEntry = (hexId) => {
+  if (!spriteVariantMap.has(hexId)) {
+    spriteVariantMap.set(hexId, {
+      variants: new Set(),
+      subVariantsByVariant: new Map(),
+    });
+  }
+  return spriteVariantMap.get(hexId);
+};
+
 const loadSpriteVariants = async () => {
   try {
     const response = await fetch(DATA_PATHS.spriteMap);
     const entries = await response.json();
     entries.forEach((entry) => {
       if (!entry || !entry.filename) {
+        return;
+      }
+      const subMatch = entry.filename.match(/^([0-9A-F]+)_(\d+)_(\d+)\.png$/i);
+      if (subMatch) {
+        const hexId = subMatch[1].toUpperCase();
+        const variantIndex = Number.parseInt(subMatch[2], 10);
+        const subVariantIndex = Number.parseInt(subMatch[3], 10);
+        if (Number.isNaN(variantIndex) || Number.isNaN(subVariantIndex)) {
+          return;
+        }
+        const entryData = ensureSpriteVariantEntry(hexId);
+        entryData.variants.add(variantIndex);
+        if (!entryData.subVariantsByVariant.has(variantIndex)) {
+          entryData.subVariantsByVariant.set(variantIndex, new Set());
+        }
+        entryData.subVariantsByVariant.get(variantIndex).add(subVariantIndex);
         return;
       }
       const match = entry.filename.match(/^([0-9A-F]+)_(\d+)\.png$/i);
@@ -863,10 +1003,8 @@ const loadSpriteVariants = async () => {
       if (Number.isNaN(variantIndex)) {
         return;
       }
-      if (!spriteVariantMap.has(hexId)) {
-        spriteVariantMap.set(hexId, new Set());
-      }
-      spriteVariantMap.get(hexId).add(variantIndex);
+      const entryData = ensureSpriteVariantEntry(hexId);
+      entryData.variants.add(variantIndex);
     });
   } catch (error) {
     console.warn("Unable to load sprite variants.", error);
@@ -893,16 +1031,29 @@ const loadCatalogItems = async () => {
     const kindName = formatKindName(rawKindName);
     const superCategory = getSuperCategory(rawKindName);
     const hexId = formatItemHexId(index);
-    const variantSet = spriteVariantMap.get(hexId);
-    const variants = variantSet
-      ? Array.from(variantSet)
+    const variantData = spriteVariantMap.get(hexId);
+    const variants = variantData
+      ? Array.from(variantData.variants)
           .sort((a, b) => a - b)
           .map((variantIndex) => ({
             index: variantIndex,
             orderId: buildOrderId(hexId, variantIndex),
           }))
       : [];
+    const subVariantsByVariant = new Map();
+    if (variantData && variantData.subVariantsByVariant.size > 0) {
+      variantData.subVariantsByVariant.forEach((subVariantSet, variantIndex) => {
+        subVariantsByVariant.set(
+          variantIndex,
+          Array.from(subVariantSet).sort((a, b) => a - b)
+        );
+      });
+    }
     const selectedVariantIndex = variants.length > 0 ? variants[0].index : null;
+    const selectedSubVariantIndex =
+      selectedVariantIndex !== null && subVariantsByVariant.size > 0
+        ? (subVariantsByVariant.get(selectedVariantIndex) || [])[0] ?? null
+        : null;
     return {
       id: index,
       hexId,
@@ -913,6 +1064,8 @@ const loadCatalogItems = async () => {
       superCategory,
       variants,
       selectedVariantIndex,
+      subVariantsByVariant,
+      selectedSubVariantIndex,
     };
   });
 };
