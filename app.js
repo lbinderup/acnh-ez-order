@@ -8,10 +8,17 @@ const copyOrderButton = document.getElementById("copy-order");
 const orderCommand = document.getElementById("order-command");
 const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
+const orderDrawer = document.getElementById("order-drawer");
+const drawerSlotCount = document.getElementById("drawer-slot-count");
+const orderDrawerList = document.getElementById("order-drawer-list");
+const drawerClearButton = document.getElementById("drawer-clear");
+const drawerCopyButton = document.getElementById("drawer-copy");
+const orderDrawerToggle = document.getElementById("order-drawer-toggle");
 const unsafeToggle = document.getElementById("unsafe-toggle");
 const sortSelect = document.getElementById("sort-select");
 const addAllButton = document.getElementById("add-all");
 let categoryDropdownListenerBound = false;
+let isDrawerCollapsed = false;
 
 const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 80;
@@ -1264,7 +1271,65 @@ const renderOrder = () => {
     orderSlots.appendChild(card);
   });
 
+  renderOrderDrawer();
   updateOrderCommand();
+};
+
+const renderOrderDrawer = () => {
+  if (!orderDrawer) {
+    return;
+  }
+
+  if (orderItems.length === 0) {
+    orderDrawer.hidden = true;
+    return;
+  }
+
+  orderDrawer.hidden = false;
+  orderDrawer.classList.toggle("is-collapsed", isDrawerCollapsed);
+
+  if (drawerSlotCount) {
+    drawerSlotCount.textContent = `${orderItems.length}/${MAX_SLOTS} slots`;
+  }
+
+  if (orderDrawerToggle) {
+    orderDrawerToggle.textContent = isDrawerCollapsed ? "❯" : "❮";
+    orderDrawerToggle.setAttribute(
+      "aria-label",
+      isDrawerCollapsed ? "Expand order drawer" : "Collapse order drawer"
+    );
+  }
+
+  if (orderDrawerList) {
+    orderDrawerList.innerHTML = "";
+    orderItems.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "order-drawer-row";
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "order-drawer-remove";
+      removeButton.textContent = "×";
+      removeButton.setAttribute("aria-label", `Remove ${item.name} from order`);
+      removeButton.addEventListener("click", () => removeFromOrder(index));
+
+      const icon = document.createElement("img");
+      icon.className = "order-drawer-icon";
+      icon.alt = item.name;
+      assignSprite(icon, getPreviewHexId(item), getSelectedVariantIndex(item), getSelectedSubVariantIndex(item));
+
+      const name = document.createElement("div");
+      name.className = "order-drawer-name";
+      name.textContent = item.name;
+
+      row.append(removeButton, icon, name);
+      orderDrawerList.appendChild(row);
+    });
+  }
+
+  if (drawerCopyButton) {
+    drawerCopyButton.disabled = orderItems.length === 0;
+  }
 };
 
 const updateOrderCommand = () => {
@@ -1718,5 +1783,24 @@ clearOrderButton.addEventListener("click", () => {
 
 copyOrderButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
 copyCommandButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
+
+if (drawerClearButton) {
+  drawerClearButton.addEventListener("click", () => {
+    orderItems.length = 0;
+    renderOrder();
+    renderCatalog();
+  });
+}
+
+if (drawerCopyButton) {
+  drawerCopyButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
+}
+
+if (orderDrawerToggle) {
+  orderDrawerToggle.addEventListener("click", () => {
+    isDrawerCollapsed = !isDrawerCollapsed;
+    renderOrderDrawer();
+  });
+}
 
 init();

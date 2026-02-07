@@ -69,6 +69,22 @@
       </section>
     </main>
 
+    <aside id="order-drawer" class="order-drawer" aria-live="polite" hidden>
+      <div class="order-drawer-header">
+        <div id="drawer-slot-count" class="order-drawer-slots">0/40 slots</div>
+        <button id="order-drawer-toggle" type="button" class="order-drawer-toggle" aria-label="Collapse order drawer">
+          ❮
+        </button>
+      </div>
+      <div class="order-drawer-body">
+        <div id="order-drawer-list" class="order-drawer-list"></div>
+        <div class="order-drawer-actions">
+          <button id="drawer-clear" type="button" class="secondary">clear</button>
+          <button id="drawer-copy" type="button">copy</button>
+        </div>
+      </div>
+    </aside>
+
     <footer>
       <p>
         Sprites are loaded from <code>resources/sprites</code> and catalog data is loaded from
