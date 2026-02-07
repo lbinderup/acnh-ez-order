@@ -1,7 +1,7 @@
 const catalogList = document.getElementById("catalog-list");
 const orderSlots = document.getElementById("order-slots");
 const searchInput = document.getElementById("search-input");
-const categoryFilter = document.getElementById("category-filter");
+const categoryToggles = document.getElementById("category-toggles");
 const clearSearchButton = document.getElementById("clear-search");
 const clearOrderButton = document.getElementById("clear-order");
 const copyOrderButton = document.getElementById("copy-order");
@@ -10,6 +10,8 @@ const copyCommandButton = document.getElementById("copy-command");
 const slotCount = document.getElementById("slot-count");
 
 const MAX_SLOTS = 40;
+const MAX_PREVIEW_RESULTS = 8;
+const DEFAULT_SUPER_CATEGORY = "Furniture";
 let catalogItems = [];
 let filteredItems = [];
 const orderItems = [];
@@ -243,6 +245,8 @@ const ITEM_KIND_NAMES = [
 let unitIconDumpBytes = null;
 let unitIconHeaderMap = null;
 let unitIconPointerMap = null;
+let isSearchEmpty = true;
+const activeCategories = new Set([DEFAULT_SUPER_CATEGORY]);
 
 const DEFAULT_SPRITE =
   "data:image/svg+xml;utf8," +
@@ -259,6 +263,127 @@ const formatKindName = (kindName) =>
     .replace(/^Kind_/, "")
     .replace(/^Ftr_/, "Furniture ")
     .replace(/_/g, " ");
+
+const matchesAny = (source, tokens) => tokens.some((token) => source.includes(token));
+
+const getSuperCategory = (kindName) => {
+  if (!kindName) {
+    return "Misc";
+  }
+  if (
+    kindName.startsWith("Ftr_") ||
+    kindName.startsWith("Kind_Ftr") ||
+    matchesAny(kindName, [
+      "Kind_Room",
+      "Kind_Rug",
+      "Kind_Wall",
+      "Kind_Floor",
+      "Kind_Pillar",
+      "Kind_Picture",
+      "Kind_Poster",
+      "Kind_Sculpture",
+      "Kind_DoorDeco",
+      "Kind_Fence",
+      "Kind_BridgeItem",
+      "Kind_SlopeItem",
+      "Kind_HousePost",
+      "Kind_HousingKit",
+      "Kind_HousingKitBirdge",
+      "Kind_GardenEditList",
+      "Kind_MyDesignObject",
+      "Kind_MyDesignTexture",
+      "Kind_CommonFabric",
+      "Kind_DummyFtr",
+      "Kind_SequenceOnly",
+      "Kind_OneRoomBox",
+      "Kind_Counter",
+      "Kind_DummyCardboard",
+      "Kind_DummyPresentbox",
+      "Kind_DummyWrapping",
+      "Kind_DummyWrappingOtoshidama",
+    ])
+  ) {
+    return "Furniture";
+  }
+  if (
+    matchesAny(kindName, [
+      "Bottoms_",
+      "Top_",
+      "Onepiece_",
+      "Shoes_",
+      "Kind_Cap",
+      "Kind_Shoes",
+      "Kind_Socks",
+      "Kind_Helmet",
+      "Kind_Accessory",
+      "Kind_Bag",
+      "Kind_HandBag",
+      "Kind_ShopTorso",
+      "Kind_PlayerDemoOutfit",
+      "Kind_NpcOutfit",
+    ])
+  ) {
+    return "Clothing";
+  }
+  if (
+    matchesAny(kindName, [
+      "Kind_Axe",
+      "Kind_Net",
+      "Kind_Shovel",
+      "Kind_Ladder",
+      "Kind_FishingRod",
+      "Kind_Slingshot",
+      "Kind_Megaphone",
+      "Kind_Ocarina",
+      "Kind_Panflute",
+      "Kind_Maracas",
+      "Kind_Tambourine",
+      "Kind_Partyhorn",
+      "Kind_PartyPopper",
+      "Kind_BlowBubble",
+      "Kind_SubTool",
+      "Kind_SmartPhone",
+    ])
+  ) {
+    return "Tools";
+  }
+  if (
+    matchesAny(kindName, [
+      "Kind_Fish",
+      "Kind_Insect",
+      "Kind_DiveFish",
+      "Kind_Fossil",
+      "Kind_Gyroid",
+      "Kind_Flower",
+      "Kind_Fruit",
+      "Kind_Mushroom",
+      "Kind_Bush",
+    ])
+  ) {
+    return "Nature";
+  }
+  if (
+    matchesAny(kindName, [
+      "Kind_CraftMaterial",
+      "Kind_CraftRemake",
+      "Kind_CookingMaterial",
+      "Kind_Ore",
+      "Kind_StarPiece",
+      "Kind_SnowCrystal",
+      "Kind_Feather",
+      "Kind_Shell",
+      "Kind_Clay",
+      "Kind_Stone",
+      "Kind_Wood",
+      "Kind_Candy",
+      "Kind_Candyfloss",
+      "Kind_Honeycomb",
+    ])
+  ) {
+    return "Materials";
+  }
+  return "Misc";
+};
 
 const buildDisplayNames = (rawNames) => {
   const names = [...rawNames];
@@ -446,14 +571,18 @@ const assignUnitIcon = (image, kindIndex) => {
   });
 };
 
-const buildSpriteFrame = (item) => {
+const buildSpriteFrame = (item, usePreview = true) => {
   const frame = document.createElement("div");
   frame.className = "sprite-frame";
 
   const image = document.createElement("img");
   image.className = "item-sprite";
   image.alt = item.name;
-  assignSprite(image, item.hexId, item.selectedVariantIndex);
+  if (usePreview) {
+    assignSprite(image, item.hexId, item.selectedVariantIndex);
+  } else {
+    image.hidden = true;
+  }
 
   const typeIcon = document.createElement("img");
   typeIcon.className = "type-icon";
@@ -525,23 +654,39 @@ const buildVariantPicker = (item) => {
 
 const renderCatalog = () => {
   catalogList.innerHTML = "";
+  const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
+  catalogList.classList.toggle("condensed", filteredItems.length > MAX_PREVIEW_RESULTS);
+
   if (filteredItems.length === 0) {
-    catalogList.innerHTML = "<p>No items match your search.</p>";
+    catalogList.innerHTML = isSearchEmpty
+      ? "<p>Enter a search term to see items.</p>"
+      : "<p>No items match your search.</p>";
     return;
   }
 
   filteredItems.forEach((item) => {
     const card = document.createElement("article");
     card.className = "catalog-card";
+    if (!usePreviews) {
+      card.classList.add("condensed-card");
+    }
 
-    const spriteFrame = buildSpriteFrame(item);
+    const spriteFrame = buildSpriteFrame(item, usePreviews);
 
-    const title = document.createElement("h3");
-    title.textContent = item.name;
+    let title;
+    let meta;
+    if (usePreviews) {
+      title = document.createElement("h3");
+      title.textContent = item.name;
 
-    const meta = document.createElement("div");
-    meta.className = "catalog-meta";
-    meta.textContent = `${item.category} · ${getVariantMetaLabel(item)}`;
+      meta = document.createElement("div");
+      meta.className = "catalog-meta";
+      meta.textContent = `${item.superCategory} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+    } else {
+      title = document.createElement("div");
+      title.className = "catalog-name-box";
+      title.textContent = item.name;
+    }
 
     const button = document.createElement("button");
     button.type = "button";
@@ -549,12 +694,16 @@ const renderCatalog = () => {
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
 
-    const variantPicker = buildVariantPicker(item);
+    const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
     if (variantPicker) {
       card.append(spriteFrame, title, meta, variantPicker, button);
     } else {
-      card.append(spriteFrame, title, meta, button);
+      if (meta) {
+        card.append(spriteFrame, title, meta, button);
+      } else {
+        card.append(spriteFrame, title, button);
+      }
     }
     catalogList.appendChild(card);
   });
@@ -579,7 +728,7 @@ const renderOrder = () => {
 
     const meta = document.createElement("div");
     meta.className = "catalog-meta";
-    meta.textContent = `${item.category} · ${getVariantMetaLabel(item)}`;
+    meta.textContent = `${item.superCategory} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
 
     const button = document.createElement("button");
     button.type = "button";
@@ -630,11 +779,17 @@ const removeFromOrder = (index) => {
 
 const filterCatalog = () => {
   const query = searchInput.value.trim().toLowerCase();
-  const category = categoryFilter.value;
+  isSearchEmpty = query.length === 0;
+  if (isSearchEmpty) {
+    filteredItems = [];
+    renderCatalog();
+    return;
+  }
 
   filteredItems = catalogItems.filter((item) => {
-    const matchesCategory = !category || item.category === category;
-    const searchable = `${item.name} ${item.category} ${getVariantMetaLabel(item)}`.toLowerCase();
+    const matchesCategory = activeCategories.size === 0 || activeCategories.has(item.superCategory);
+    const searchable =
+      `${item.name} ${item.superCategory} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     return matchesCategory && matchesQuery;
   });
@@ -642,14 +797,45 @@ const filterCatalog = () => {
   renderCatalog();
 };
 
-const populateCategories = () => {
-  const categories = Array.from(new Set(catalogItems.map((item) => item.category))).sort();
-  categories.forEach((category) => {
-    const option = document.createElement("option");
-    option.value = category;
-    option.textContent = category;
-    categoryFilter.appendChild(option);
+const resetCategoryFilters = () => {
+  activeCategories.clear();
+  activeCategories.add(DEFAULT_SUPER_CATEGORY);
+  updateCategoryToggleState();
+};
+
+const updateCategoryToggleState = () => {
+  if (!categoryToggles) {
+    return;
+  }
+  categoryToggles.querySelectorAll("button[data-category]").forEach((button) => {
+    const category = button.dataset.category;
+    const isActive = activeCategories.has(category);
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive.toString());
   });
+};
+
+const populateCategoryToggles = () => {
+  const categories = Array.from(new Set(catalogItems.map((item) => item.superCategory))).sort();
+  categoryToggles.innerHTML = "";
+  categories.forEach((category) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "category-toggle";
+    button.dataset.category = category;
+    button.textContent = category;
+    button.addEventListener("click", () => {
+      if (activeCategories.has(category)) {
+        activeCategories.delete(category);
+      } else {
+        activeCategories.add(category);
+      }
+      updateCategoryToggleState();
+      filterCatalog();
+    });
+    categoryToggles.appendChild(button);
+  });
+  updateCategoryToggleState();
 };
 
 const copyToClipboard = async (text) => {
@@ -702,10 +888,10 @@ const loadCatalogItems = async () => {
 
   return displayNames.map((name, index) => {
     const kindIndex = kinds[index];
-    const kindName =
-      kindIndex !== undefined && ITEM_KIND_NAMES[kindIndex]
-        ? formatKindName(ITEM_KIND_NAMES[kindIndex])
-        : "Unknown";
+    const rawKindName =
+      kindIndex !== undefined && ITEM_KIND_NAMES[kindIndex] ? ITEM_KIND_NAMES[kindIndex] : "Unknown";
+    const kindName = formatKindName(rawKindName);
+    const superCategory = getSuperCategory(rawKindName);
     const hexId = formatItemHexId(index);
     const variantSet = spriteVariantMap.get(hexId);
     const variants = variantSet
@@ -723,7 +909,8 @@ const loadCatalogItems = async () => {
       orderId: buildOrderId(hexId, selectedVariantIndex),
       kindIndex,
       name,
-      category: kindName,
+      kindLabel: kindName,
+      superCategory,
       variants,
       selectedVariantIndex,
     };
@@ -734,17 +921,16 @@ const init = async () => {
   await loadUnitIconAssets();
   await loadSpriteVariants();
   catalogItems = await loadCatalogItems();
-  filteredItems = [...catalogItems];
-  populateCategories();
+  filteredItems = [];
+  populateCategoryToggles();
   renderCatalog();
   renderOrder();
 };
 
 searchInput.addEventListener("input", filterCatalog);
-categoryFilter.addEventListener("change", filterCatalog);
 clearSearchButton.addEventListener("click", () => {
   searchInput.value = "";
-  categoryFilter.value = "";
+  resetCategoryFilters();
   filterCatalog();
 });
 
