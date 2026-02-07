@@ -17,6 +17,7 @@ const spriteCache = new Map();
 const spriteLoadPromises = new Map();
 const unitIconCache = new Map();
 const unitIconLoadPromises = new Map();
+const spriteVariantMap = new Map();
 
 const DATA_PATHS = {
   itemNames: "data/nhse/text_item_en.txt",
@@ -24,6 +25,7 @@ const DATA_PATHS = {
   unitIconDump: "data/unit-icons/imagedump_manual.bytes",
   unitIconHeader: "data/unit-icons/imagedump_manualheader.txt",
   unitIconPointer: "data/unit-icons/BeriPointer_unit.txt",
+  spriteMap: "resources/sprite-map.json",
 };
 
 const SPRITE_BASE_PATH = "resources/sprites";
@@ -343,15 +345,20 @@ const getUnitIconUrl = async (kindIndex) => {
 
 const formatItemHexId = (itemId) => itemId.toString(16).toUpperCase();
 
-const buildSpriteCandidates = (hexId) => [
-  `${SPRITE_BASE_PATH}/${hexId}_0.png`,
-  `${SPRITE_BASE_PATH}/${hexId}.png`,
-  `${SPRITE_BASE_PATH}/${hexId}_0_0.png`,
-];
+const buildSpriteCandidates = (hexId, variantIndex) => {
+  const candidates = [];
+  if (variantIndex !== null && variantIndex !== undefined) {
+    candidates.push(`${SPRITE_BASE_PATH}/${hexId}_${variantIndex}.png`);
+  }
+  candidates.push(`${SPRITE_BASE_PATH}/${hexId}.png`);
+  candidates.push(`${SPRITE_BASE_PATH}/${hexId}_0.png`);
+  candidates.push(`${SPRITE_BASE_PATH}/${hexId}_0_0.png`);
+  return candidates;
+};
 
-const resolveSpriteUrl = (hexId) =>
+const resolveSpriteUrl = (hexId, variantIndex) =>
   new Promise((resolve) => {
-    const candidates = buildSpriteCandidates(hexId);
+    const candidates = buildSpriteCandidates(hexId, variantIndex);
     const attempt = (index) => {
       if (index >= candidates.length) {
         resolve(null);
@@ -365,30 +372,34 @@ const resolveSpriteUrl = (hexId) =>
     attempt(0);
   });
 
-const assignSprite = (image, hexId) => {
-  if (spriteCache.has(hexId)) {
-    const cached = spriteCache.get(hexId);
+const assignSprite = (image, hexId, variantIndex) => {
+  const cacheKey =
+    variantIndex !== null && variantIndex !== undefined
+      ? `${hexId}_${variantIndex}`
+      : hexId;
+  if (spriteCache.has(cacheKey)) {
+    const cached = spriteCache.get(cacheKey);
     image.src = cached || DEFAULT_SPRITE;
     return;
   }
 
   image.src = DEFAULT_SPRITE;
-  if (!spriteLoadPromises.has(hexId)) {
-    const promise = resolveSpriteUrl(hexId)
+  if (!spriteLoadPromises.has(cacheKey)) {
+    const promise = resolveSpriteUrl(hexId, variantIndex)
       .then((url) => {
-        spriteCache.set(hexId, url);
-        spriteLoadPromises.delete(hexId);
+        spriteCache.set(cacheKey, url);
+        spriteLoadPromises.delete(cacheKey);
         return url;
       })
       .catch(() => {
-        spriteCache.set(hexId, null);
-        spriteLoadPromises.delete(hexId);
+        spriteCache.set(cacheKey, null);
+        spriteLoadPromises.delete(cacheKey);
         return null;
       });
-    spriteLoadPromises.set(hexId, promise);
+    spriteLoadPromises.set(cacheKey, promise);
   }
 
-  spriteLoadPromises.get(hexId).then((url) => {
+  spriteLoadPromises.get(cacheKey).then((url) => {
     if (url) {
       image.src = url;
     }
@@ -442,7 +453,7 @@ const buildSpriteFrame = (item) => {
   const image = document.createElement("img");
   image.className = "item-sprite";
   image.alt = item.name;
-  assignSprite(image, item.hexId);
+  assignSprite(image, item.hexId, item.selectedVariantIndex);
 
   const typeIcon = document.createElement("img");
   typeIcon.className = "type-icon";
@@ -452,6 +463,64 @@ const buildSpriteFrame = (item) => {
 
   frame.append(image, typeIcon);
   return frame;
+};
+
+const buildOrderId = (hexId, variantIndex) => {
+  if (variantIndex === null || variantIndex === undefined || variantIndex === 0) {
+    return hexId;
+  }
+  return `${variantIndex}${hexId.padStart(8, "0")}`;
+};
+
+const getSelectedVariantIndex = (item) => {
+  if (!item.variants || item.variants.length === 0) {
+    return null;
+  }
+  if (item.selectedVariantIndex === null || item.selectedVariantIndex === undefined) {
+    return item.variants[0].index;
+  }
+  return item.selectedVariantIndex;
+};
+
+const getVariantMetaLabel = (item) => {
+  const variantIndex = getSelectedVariantIndex(item);
+  if (variantIndex === null || variantIndex === undefined) {
+    return "Default";
+  }
+  return `Variant ${variantIndex}`;
+};
+
+const buildVariantPicker = (item) => {
+  if (!item.variants || item.variants.length <= 1) {
+    return null;
+  }
+  const container = document.createElement("div");
+  container.className = "variant-picker";
+
+  item.variants.forEach((variant) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "variant-option";
+    if (variant.index === getSelectedVariantIndex(item)) {
+      button.classList.add("is-selected");
+    }
+
+    const image = document.createElement("img");
+    image.className = "variant-sprite";
+    image.alt = `${item.name} variant ${variant.index}`;
+    assignSprite(image, item.hexId, variant.index);
+
+    button.appendChild(image);
+    button.addEventListener("click", () => {
+      item.selectedVariantIndex = variant.index;
+      item.orderId = buildOrderId(item.hexId, variant.index);
+      renderCatalog();
+    });
+
+    container.appendChild(button);
+  });
+
+  return container;
 };
 
 const renderCatalog = () => {
@@ -472,7 +541,7 @@ const renderCatalog = () => {
 
     const meta = document.createElement("div");
     meta.className = "catalog-meta";
-    meta.textContent = `${item.category} · ${item.variant || "Default"}`;
+    meta.textContent = `${item.category} · ${getVariantMetaLabel(item)}`;
 
     const button = document.createElement("button");
     button.type = "button";
@@ -480,7 +549,13 @@ const renderCatalog = () => {
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
 
-    card.append(spriteFrame, title, meta, button);
+    const variantPicker = buildVariantPicker(item);
+
+    if (variantPicker) {
+      card.append(spriteFrame, title, meta, variantPicker, button);
+    } else {
+      card.append(spriteFrame, title, meta, button);
+    }
     catalogList.appendChild(card);
   });
 };
@@ -504,7 +579,7 @@ const renderOrder = () => {
 
     const meta = document.createElement("div");
     meta.className = "catalog-meta";
-    meta.textContent = `${item.category} · ${item.variant || "Default"}`;
+    meta.textContent = `${item.category} · ${getVariantMetaLabel(item)}`;
 
     const button = document.createElement("button");
     button.type = "button";
@@ -537,7 +612,12 @@ const addToOrder = (item) => {
   if (orderItems.length >= MAX_SLOTS) {
     return;
   }
-  orderItems.push(item);
+  const variantIndex = getSelectedVariantIndex(item);
+  orderItems.push({
+    ...item,
+    selectedVariantIndex: variantIndex,
+    orderId: buildOrderId(item.hexId, variantIndex),
+  });
   renderOrder();
   renderCatalog();
 };
@@ -554,7 +634,7 @@ const filterCatalog = () => {
 
   filteredItems = catalogItems.filter((item) => {
     const matchesCategory = !category || item.category === category;
-    const searchable = `${item.name} ${item.category} ${item.variant || ""}`.toLowerCase();
+    const searchable = `${item.name} ${item.category} ${getVariantMetaLabel(item)}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     return matchesCategory && matchesQuery;
   });
@@ -580,6 +660,33 @@ const copyToClipboard = async (text) => {
   }
 };
 
+const loadSpriteVariants = async () => {
+  try {
+    const response = await fetch(DATA_PATHS.spriteMap);
+    const entries = await response.json();
+    entries.forEach((entry) => {
+      if (!entry || !entry.filename) {
+        return;
+      }
+      const match = entry.filename.match(/^([0-9A-F]+)_(\d+)\.png$/i);
+      if (!match) {
+        return;
+      }
+      const hexId = match[1].toUpperCase();
+      const variantIndex = Number.parseInt(match[2], 10);
+      if (Number.isNaN(variantIndex)) {
+        return;
+      }
+      if (!spriteVariantMap.has(hexId)) {
+        spriteVariantMap.set(hexId, new Set());
+      }
+      spriteVariantMap.get(hexId).add(variantIndex);
+    });
+  } catch (error) {
+    console.warn("Unable to load sprite variants.", error);
+  }
+};
+
 const loadCatalogItems = async () => {
   const [itemNameResponse, itemKindResponse] = await Promise.all([
     fetch(DATA_PATHS.itemNames),
@@ -600,20 +707,32 @@ const loadCatalogItems = async () => {
         ? formatKindName(ITEM_KIND_NAMES[kindIndex])
         : "Unknown";
     const hexId = formatItemHexId(index);
+    const variantSet = spriteVariantMap.get(hexId);
+    const variants = variantSet
+      ? Array.from(variantSet)
+          .sort((a, b) => a - b)
+          .map((variantIndex) => ({
+            index: variantIndex,
+            orderId: buildOrderId(hexId, variantIndex),
+          }))
+      : [];
+    const selectedVariantIndex = variants.length > 0 ? variants[0].index : null;
     return {
       id: index,
       hexId,
-      orderId: hexId,
+      orderId: buildOrderId(hexId, selectedVariantIndex),
       kindIndex,
       name,
       category: kindName,
-      variant: "",
+      variants,
+      selectedVariantIndex,
     };
   });
 };
 
 const init = async () => {
   await loadUnitIconAssets();
+  await loadSpriteVariants();
   catalogItems = await loadCatalogItems();
   filteredItems = [...catalogItems];
   populateCategories();
