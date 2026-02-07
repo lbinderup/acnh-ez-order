@@ -16,7 +16,7 @@ const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 20;
 const PREVIEW_LOAD_DELAY_MS = 50;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
-const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature"]);
+const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
   Clothing: [
     "Tops",
@@ -56,6 +56,8 @@ const SUBCATEGORY_PRIORITY = {
     "Other",
   ],
   Nature: ["Fish", "Insects", "Fossils", "Gyroids", "Flowers", "Fruit", "Mushrooms", "Shrubs", "Other"],
+  Tools: ["Core Tools", "Utility", "Instruments", "Party", "Apps", "Other"],
+  Misc: ["Consumables", "Tickets", "Recipes", "Music", "Events", "Quests", "Currency", "Other"],
 };
 let catalogItems = [];
 let filteredItems = [];
@@ -513,6 +515,49 @@ const getSubCategory = (kindName, superCategory) => {
     if (kindName.includes("Kind_Fruit")) return "Fruit";
     if (kindName.includes("Kind_Mushroom")) return "Mushrooms";
     if (kindName.includes("Kind_Bush")) return "Shrubs";
+    return "Other";
+  }
+  if (superCategory === "Tools") {
+    if (
+      matchesAny(kindName, [
+        "Kind_Axe",
+        "Kind_Net",
+        "Kind_Shovel",
+        "Kind_Ladder",
+        "Kind_FishingRod",
+        "Kind_Slingshot",
+        "Kind_Watering",
+      ])
+    ) {
+      return "Core Tools";
+    }
+    if (kindName.includes("Kind_Megaphone")) return "Utility";
+    if (matchesAny(kindName, ["Kind_Ocarina", "Kind_Panflute", "Kind_Maracas", "Kind_Tambourine"])) {
+      return "Instruments";
+    }
+    if (matchesAny(kindName, ["Kind_Partyhorn", "Kind_PartyPopper", "Kind_BlowBubble"])) {
+      return "Party";
+    }
+    if (kindName.includes("Kind_SmartPhone")) return "Apps";
+    if (kindName.includes("Kind_SubTool")) return "Other";
+    return "Other";
+  }
+  if (superCategory === "Misc") {
+    if (matchesAny(kindName, ["Kind_Medicine", "Kind_Drink", "Kind_Juice", "Kind_Icecandy", "Kind_Tapioca"])) {
+      return "Consumables";
+    }
+    if (kindName.includes("Ticket")) return "Tickets";
+    if (kindName.includes("Recipe") || kindName.includes("DIYRecipe")) return "Recipes";
+    if (kindName.includes("Kind_Music")) return "Music";
+    if (matchesAny(kindName, ["Kind_Firework", "Kind_FierworkHand", "Kind_LoveCrystal", "Kind_RainbowFeather"])) {
+      return "Events";
+    }
+    if (matchesAny(kindName, ["Kind_LostQuest", "Kind_Quest", "Kind_MessageBottle"])) {
+      return "Quests";
+    }
+    if (matchesAny(kindName, ["Kind_Money", "Kind_Turnip"])) {
+      return "Currency";
+    }
     return "Other";
   }
   return null;
@@ -1026,6 +1071,8 @@ const updateAddAllButton = () => {
   addAllButton.hidden = false;
   const availableSlots = MAX_SLOTS - orderItems.length;
   addAllButton.disabled = filteredItems.length > availableSlots;
+  addAllButton.textContent = `Add results (${filteredItems.length})`;
+  addAllButton.setAttribute("aria-label", `Add ${filteredItems.length} results to order`);
 };
 
 const renderCatalog = () => {
@@ -1069,6 +1116,9 @@ const renderCatalog = () => {
       title.textContent = item.name;
     }
 
+    const actionRow = document.createElement("div");
+    actionRow.className = "catalog-card-actions";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "add-to-order";
@@ -1076,6 +1126,20 @@ const renderCatalog = () => {
     button.setAttribute("aria-label", "Add to order");
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
+
+    const variantCount = item.variants ? item.variants.length : 0;
+    if (variantCount > 1) {
+      const addAllVariantsButton = document.createElement("button");
+      addAllVariantsButton.type = "button";
+      addAllVariantsButton.className = "add-variants";
+      addAllVariantsButton.textContent = "Add all variants";
+      const availableSlots = MAX_SLOTS - orderItems.length;
+      addAllVariantsButton.disabled = variantCount > availableSlots;
+      addAllVariantsButton.addEventListener("click", () => addAllVariantsToOrder(item));
+      actionRow.appendChild(addAllVariantsButton);
+    }
+
+    actionRow.appendChild(button);
 
     const orderCount = getOrderItemCount(item);
     if (orderCount > 0) {
@@ -1088,12 +1152,12 @@ const renderCatalog = () => {
     const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
     if (variantPicker) {
-      card.append(spriteFrame, title, meta, variantPicker, button);
+      card.append(spriteFrame, title, meta, variantPicker, actionRow);
     } else {
       if (meta) {
-        card.append(spriteFrame, title, meta, button);
+        card.append(spriteFrame, title, meta, actionRow);
       } else {
-        card.append(spriteFrame, title, button);
+        card.append(spriteFrame, title, actionRow);
       }
     }
     catalogList.appendChild(card);
@@ -1161,6 +1225,32 @@ const addToOrder = (item) => {
     selectedVariantIndex: variantIndex,
     selectedSubVariantIndex: subVariantIndex,
     orderId: buildOrderId(item.hexId, variantIndex),
+  });
+  renderOrder();
+  renderCatalog();
+};
+
+const addAllVariantsToOrder = (item) => {
+  if (!item.variants || item.variants.length <= 1) {
+    return;
+  }
+  const availableSlots = MAX_SLOTS - orderItems.length;
+  if (item.variants.length > availableSlots) {
+    return;
+  }
+  item.variants.forEach((variant) => {
+    const variantIndex = typeof variant === "number" ? variant : variant.index;
+    const subVariants =
+      item.subVariantsByVariant && item.subVariantsByVariant.size > 0
+        ? item.subVariantsByVariant.get(variantIndex) || []
+        : [];
+    const subVariantIndex = subVariants.length > 0 ? subVariants[0] : null;
+    orderItems.push({
+      ...item,
+      selectedVariantIndex: variantIndex,
+      selectedSubVariantIndex: subVariantIndex,
+      orderId: buildOrderId(item.hexId, variantIndex),
+    });
   });
   renderOrder();
   renderCatalog();
@@ -1262,6 +1352,9 @@ const populateCategoryToggles = () => {
       const header = document.createElement("div");
       header.className = "category-group-header";
 
+      const split = document.createElement("div");
+      split.className = "category-split";
+
       const parentButton = document.createElement("button");
       parentButton.type = "button";
       parentButton.className = "category-toggle";
@@ -1280,11 +1373,23 @@ const populateCategoryToggles = () => {
         filterCatalog();
       });
 
-      header.appendChild(parentButton);
+      const dropdownButton = document.createElement("button");
+      dropdownButton.type = "button";
+      dropdownButton.className = "category-toggle category-dropdown-toggle";
+      dropdownButton.dataset.category = category;
+      dropdownButton.dataset.role = "dropdown";
+      dropdownButton.setAttribute("aria-haspopup", "true");
+      dropdownButton.setAttribute("aria-expanded", "false");
+      dropdownButton.setAttribute("aria-label", `Toggle ${category} subcategories`);
+      dropdownButton.textContent = "▾";
+
+      split.append(parentButton, dropdownButton);
+      header.appendChild(split);
       group.appendChild(header);
 
       const subToggleRow = document.createElement("div");
-      subToggleRow.className = "category-subtoggles";
+      subToggleRow.className = "category-dropdown";
+      subToggleRow.hidden = true;
 
       const subcategories = sortSubcategories(category, categoryData.get(category) || new Set());
       subcategories.forEach((subcategory) => {
@@ -1310,6 +1415,13 @@ const populateCategoryToggles = () => {
           filterCatalog();
         });
         subToggleRow.appendChild(subButton);
+      });
+
+      dropdownButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const nextHidden = !subToggleRow.hidden;
+        subToggleRow.hidden = nextHidden;
+        dropdownButton.setAttribute("aria-expanded", (!nextHidden).toString());
       });
 
       group.appendChild(subToggleRow);
