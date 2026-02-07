@@ -588,13 +588,20 @@ const buildDisplayNames = (rawNames) => {
 
 const UNSAFE_KIND_TOKENS = ["Dummy", "PlayerDemoOutfit", "NnpcRoomMarker", "SequenceOnly"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
+const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
-const isUnsafeItem = (name, rawKindName) => {
+const isUnsafeItem = (name, rawKindName, superCategory) => {
   if (name && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
     return true;
   }
   if (!rawKindName) {
     return false;
+  }
+  if (rawKindName.includes("HousingKit")) {
+    return true;
+  }
+  if (superCategory === "Clothing" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
+    return true;
   }
   return UNSAFE_KIND_TOKENS.some((token) => rawKindName.includes(token));
 };
@@ -1558,7 +1565,7 @@ const loadCatalogItems = async () => {
     const superCategory = getSuperCategory(rawKindName);
     const subCategory = getSubCategory(rawKindName, superCategory);
     const hexId = formatItemHexId(index);
-    const isUnsafe = isUnsafeItem(name, rawKindName);
+    const isUnsafe = isUnsafeItem(name, rawKindName, superCategory);
     const variantData = spriteVariantMap.get(hexId);
     const variants = variantData
       ? Array.from(variantData.variants)
