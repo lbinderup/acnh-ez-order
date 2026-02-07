@@ -11,6 +11,7 @@ const slotCount = document.getElementById("slot-count");
 const unsafeToggle = document.getElementById("unsafe-toggle");
 const sortSelect = document.getElementById("sort-select");
 const addAllButton = document.getElementById("add-all");
+let categoryDropdownListenerBound = false;
 
 const MAX_SLOTS = 40;
 const MAX_PREVIEW_RESULTS = 20;
@@ -1132,7 +1133,7 @@ const renderCatalog = () => {
       const addAllVariantsButton = document.createElement("button");
       addAllVariantsButton.type = "button";
       addAllVariantsButton.className = "add-variants";
-      addAllVariantsButton.textContent = "Add all variants";
+      addAllVariantsButton.textContent = `Add variants (${variantCount})`;
       const availableSlots = MAX_SLOTS - orderItems.length;
       addAllVariantsButton.disabled = variantCount > availableSlots;
       addAllVariantsButton.addEventListener("click", () => addAllVariantsToOrder(item));
@@ -1341,6 +1342,23 @@ const updateCategoryToggleState = () => {
   });
 };
 
+const closeCategoryDropdowns = (exceptGroup = null) => {
+  if (!categoryToggles) {
+    return;
+  }
+  categoryToggles.querySelectorAll(".category-dropdown").forEach((dropdown) => {
+    if (exceptGroup && exceptGroup.contains(dropdown)) {
+      return;
+    }
+    dropdown.hidden = true;
+    const group = dropdown.closest(".category-group");
+    const toggle = group ? group.querySelector("button[data-role='dropdown']") : null;
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", "false");
+    }
+  });
+};
+
 const populateCategoryToggles = () => {
   const categories = Array.from(categoryData.keys()).sort();
   categoryToggles.innerHTML = "";
@@ -1419,6 +1437,7 @@ const populateCategoryToggles = () => {
 
       dropdownButton.addEventListener("click", (event) => {
         event.stopPropagation();
+        closeCategoryDropdowns(group);
         const nextHidden = !subToggleRow.hidden;
         subToggleRow.hidden = nextHidden;
         dropdownButton.setAttribute("aria-expanded", (!nextHidden).toString());
@@ -1447,6 +1466,16 @@ const populateCategoryToggles = () => {
     categoryToggles.appendChild(button);
   });
   updateCategoryToggleState();
+  if (!categoryDropdownListenerBound) {
+    document.addEventListener("click", (event) => {
+      const isDropdownClick =
+        event.target.closest(".category-dropdown") || event.target.closest(".category-dropdown-toggle");
+      if (!isDropdownClick) {
+        closeCategoryDropdowns();
+      }
+    });
+    categoryDropdownListenerBound = true;
+  }
 };
 
 const copyToClipboard = async (text) => {
