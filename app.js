@@ -999,7 +999,7 @@ const buildVariantPicker = (item) => {
             item.selectedSubVariantIndex = null;
           }
           item.orderId = buildOrderId(item.hexId, variantIndex);
-          renderCatalog();
+          updateCatalogCard(item);
         },
       })
     );
@@ -1018,7 +1018,7 @@ const buildVariantPicker = (item) => {
           item.selectedVariantIndex = currentVariantIndex;
           item.selectedSubVariantIndex = subVariantIndex;
           item.orderId = buildOrderId(item.hexId, currentVariantIndex);
-          renderCatalog();
+          updateCatalogCard(item);
         },
       })
     );
@@ -1106,19 +1106,9 @@ const applySort = (items) => {
       if (subCompare !== 0) {
         return subCompare;
       }
-      return a.name.localeCompare(b.name);
-    });
-    return sorted;
-  }
-  if (sortMode === "subcategory") {
-    sorted.sort((a, b) => {
-      const subCompare = (a.subCategory || "").localeCompare(b.subCategory || "");
-      if (subCompare !== 0) {
-        return subCompare;
-      }
-      const superCompare = a.superCategory.localeCompare(b.superCategory);
-      if (superCompare !== 0) {
-        return superCompare;
+      const kindCompare = (a.kindLabel || "").localeCompare(b.kindLabel || "");
+      if (kindCompare !== 0) {
+        return kindCompare;
       }
       return a.name.localeCompare(b.name);
     });
@@ -1165,6 +1155,7 @@ const renderCatalog = () => {
   filteredItems.forEach((item, index) => {
     const card = document.createElement("article");
     card.className = "catalog-card";
+    card.dataset.hexId = item.hexId;
     if (!usePreviews) {
       card.classList.add("condensed-card");
     }
@@ -1238,6 +1229,58 @@ const renderCatalog = () => {
   });
 
   updateAddAllButton();
+};
+
+const updateCatalogCard = (item) => {
+  const card = catalogList.querySelector(`[data-hex-id="${item.hexId}"]`);
+  if (!card) {
+    return;
+  }
+
+  const image = card.querySelector(".item-sprite");
+  if (image) {
+    assignSprite(
+      image,
+      getPreviewHexId(item),
+      getSelectedVariantIndex(item),
+      getSelectedSubVariantIndex(item)
+    );
+  }
+
+  const meta = card.querySelector(".catalog-meta");
+  if (meta) {
+    meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+  }
+
+  const existingPicker = card.querySelector(".variant-picker");
+  const nextPicker = buildVariantPicker(item);
+  if (existingPicker && nextPicker) {
+    existingPicker.replaceWith(nextPicker);
+  } else if (existingPicker && !nextPicker) {
+    existingPicker.remove();
+  } else if (!existingPicker && nextPicker) {
+    const actionRow = card.querySelector(".catalog-card-actions");
+    if (actionRow) {
+      actionRow.before(nextPicker);
+    } else {
+      card.appendChild(nextPicker);
+    }
+  }
+
+  const orderCount = getOrderItemCount(item);
+  const existingBadge = card.querySelector(".order-count");
+  if (orderCount > 0) {
+    if (existingBadge) {
+      existingBadge.textContent = `x${orderCount}`;
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "order-count";
+      badge.textContent = `x${orderCount}`;
+      card.append(badge);
+    }
+  } else if (existingBadge) {
+    existingBadge.remove();
+  }
 };
 
 const renderOrder = () => {
