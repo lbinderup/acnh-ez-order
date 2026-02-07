@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ACNH EZ Order</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>ACNH EZ Order</h1>
+        <p class="subtitle">Search the catalog, build a 40-slot order, and copy the $order command.</p>
+      </div>
+      <div class="order-summary">
+        <span id="slot-count">0</span>
+        <span>/ 40 slots</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Catalog Search</h2>
+          <div class="controls">
+            <input
+              id="search-input"
+              type="search"
+              placeholder="Search by name, category, or variant..."
+              aria-label="Search catalog"
+            />
+            <select id="category-filter" aria-label="Filter by category">
+              <option value="">All categories</option>
+            </select>
+            <button id="clear-search" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="catalog-list" class="catalog-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Your Order</h2>
+          <div class="controls">
+            <button id="clear-order" type="button" class="secondary">Clear order</button>
+            <button id="copy-order" type="button">Copy $order</button>
+          </div>
+        </div>
+        <div id="order-slots" class="order-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <h2>$order Command</h2>
+        <p>Use this command with your external utility.</p>
+        <div class="order-command">
+          <code id="order-command">$order</code>
+          <button id="copy-command" type="button">Copy</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Sprites are loaded from <code>/sprites</code>. Add downloaded item images there and update
+        <code>data/items.json</code>.
+      </p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
