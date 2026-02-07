@@ -1143,6 +1143,19 @@ const updateAddAllButton = () => {
   addAllButton.setAttribute("aria-label", `Add ${filteredItems.length} results to order`);
 };
 
+const updateCatalogActionButtons = () => {
+  const isFull = orderItems.length >= MAX_SLOTS;
+  const availableSlots = Math.max(0, MAX_SLOTS - orderItems.length);
+  catalogList.querySelectorAll(".add-to-order").forEach((button) => {
+    button.disabled = isFull;
+  });
+  catalogList.querySelectorAll(".add-variants").forEach((button) => {
+    const card = button.closest(".catalog-card");
+    const variantCount = card ? Number(card.dataset.variantCount || 0) : 0;
+    button.disabled = variantCount > availableSlots;
+  });
+};
+
 const renderCatalog = () => {
   catalogList.innerHTML = "";
   const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
@@ -1204,6 +1217,7 @@ const renderCatalog = () => {
     button.addEventListener("click", () => addToOrder(item));
 
     const variantCount = item.variants ? item.variants.length : 0;
+    card.dataset.variantCount = variantCount.toString();
     if (variantCount > 1) {
       const addAllVariantsButton = document.createElement("button");
       addAllVariantsButton.type = "button";
@@ -1260,7 +1274,11 @@ const updateCatalogCard = (item) => {
 
   const meta = card.querySelector(".catalog-meta");
   if (meta) {
-    meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+    const variantLabel = getVariantMetaLabel(item);
+    meta.textContent =
+      variantLabel === null
+        ? `${getCategoryLabel(item)} · ${item.kindLabel}`
+        : `${getCategoryLabel(item)} · ${item.kindLabel} · ${variantLabel}`;
   }
 
   const existingPicker = card.querySelector(".variant-picker");
@@ -1291,6 +1309,18 @@ const updateCatalogCard = (item) => {
     }
   } else if (existingBadge) {
     existingBadge.remove();
+  }
+
+  const addButton = card.querySelector(".add-to-order");
+  if (addButton) {
+    addButton.disabled = orderItems.length >= MAX_SLOTS;
+  }
+
+  const addVariantsButton = card.querySelector(".add-variants");
+  if (addVariantsButton) {
+    const variantCount = Number(card.dataset.variantCount || 0);
+    const availableSlots = Math.max(0, MAX_SLOTS - orderItems.length);
+    addVariantsButton.disabled = variantCount > availableSlots;
   }
 };
 
@@ -1419,7 +1449,9 @@ const addToOrder = (item) => {
     orderId: buildOrderId(item.hexId, variantIndex),
   });
   renderOrder();
-  renderCatalog();
+  updateCatalogCard(item);
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const addAllVariantsToOrder = (item) => {
@@ -1441,11 +1473,13 @@ const addAllVariantsToOrder = (item) => {
       ...item,
       selectedVariantIndex: variantIndex,
       selectedSubVariantIndex: subVariantIndex,
-      orderId: buildOrderId(item.hexId, variantIndex),
-    });
+    orderId: buildOrderId(item.hexId, variantIndex),
+  });
   });
   renderOrder();
-  renderCatalog();
+  updateCatalogCard(item);
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const addItemsToOrder = (items) => {
@@ -1463,17 +1497,23 @@ const addItemsToOrder = (items) => {
       ...item,
       selectedVariantIndex: variantIndex,
       selectedSubVariantIndex: subVariantIndex,
-      orderId: buildOrderId(item.hexId, variantIndex),
-    });
+    orderId: buildOrderId(item.hexId, variantIndex),
+  });
   });
   renderOrder();
-  renderCatalog();
+  items.forEach((item) => updateCatalogCard(item));
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const removeFromOrder = (index) => {
-  orderItems.splice(index, 1);
+  const [removedItem] = orderItems.splice(index, 1);
   renderOrder();
-  renderCatalog();
+  if (removedItem) {
+    updateCatalogCard(removedItem);
+  }
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const filterCatalog = () => {
