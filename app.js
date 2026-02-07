@@ -14,7 +14,7 @@ const addAllButton = document.getElementById("add-all");
 let categoryDropdownListenerBound = false;
 
 const MAX_SLOTS = 40;
-const MAX_PREVIEW_RESULTS = 20;
+const MAX_PREVIEW_RESULTS = 80;
 const PREVIEW_LOAD_DELAY_MS = 50;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature", "Tools", "Misc"]);
@@ -567,6 +567,8 @@ const getSubCategory = (kindName, superCategory) => {
 const getCategoryLabel = (item) =>
   item.subCategory ? `${item.superCategory} · ${item.subCategory}` : item.superCategory;
 
+const toTitleCase = (value) => value.replace(/\b\w/g, (char) => char.toUpperCase());
+
 const buildDisplayNames = (rawNames) => {
   const names = [...rawNames];
   if (names.length > 0) {
@@ -578,11 +580,12 @@ const buildDisplayNames = (rawNames) => {
     if (!cleaned) {
       return `(Item #${String(index).padStart(3, "0")})`;
     }
-    if (seen.has(cleaned)) {
-      return `${cleaned} (#${String(index).padStart(3, "0")})`;
+    const titleCased = toTitleCase(cleaned);
+    if (seen.has(titleCased)) {
+      return `${titleCased} (#${String(index).padStart(3, "0")})`;
     }
-    seen.add(cleaned);
-    return cleaned;
+    seen.add(titleCased);
+    return titleCased;
   });
 };
 
