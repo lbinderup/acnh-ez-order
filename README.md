@@ -15,7 +15,4 @@ This project is a static web app that lets you search an Animal Crossing: New Ho
    `1021_0.png` for a monstera).
 4. Host the repo on GitHub Pages and open `index.html`.
 
-## Catalog data
-
-Catalog entries are derived from the NHSE text and byte resources in `data/nhse`. Item sprites are
-resolved from `resources/sprites` using the hex item ID from the NHSE data.
+https://lbinderup.github.io/acnh-ez-order/
