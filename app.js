@@ -988,25 +988,35 @@ const buildVariantPicker = (item) => {
   container.className = "variant-picker";
 
   if (hasPrimaryPicker) {
-    container.appendChild(
-      buildVariantRow({
-        item,
-        variants: primaryVariants,
-        selectedIndex: selectedVariantIndex,
-        label: "variant",
-        onSelect: (variantIndex) => {
-          item.selectedVariantIndex = variantIndex;
-          const nextSubVariants = item.subVariantsByVariant
-            ? item.subVariantsByVariant.get(variantIndex) || []
-            : [];
-          if (!nextSubVariants.includes(item.selectedSubVariantIndex)) {
-            item.selectedSubVariantIndex = null;
-          }
-          item.orderId = buildOrderId(item.hexId, variantIndex);
-          updateCatalogCard(item);
-        },
-      })
-    );
+    const primaryRow = buildVariantRow({
+      item,
+      variants: primaryVariants,
+      selectedIndex: selectedVariantIndex,
+      label: "variant",
+      onSelect: (variantIndex) => {
+        item.selectedVariantIndex = variantIndex;
+        const nextSubVariants = item.subVariantsByVariant
+          ? item.subVariantsByVariant.get(variantIndex) || []
+          : [];
+        if (!nextSubVariants.includes(item.selectedSubVariantIndex)) {
+          item.selectedSubVariantIndex = null;
+        }
+        item.orderId = buildOrderId(item.hexId, variantIndex);
+        updateCatalogCard(item);
+      },
+    });
+
+    const addAllVariantsButton = document.createElement("button");
+    addAllVariantsButton.type = "button";
+    addAllVariantsButton.className = "variant-option variant-add-all";
+    addAllVariantsButton.textContent = "+";
+    addAllVariantsButton.setAttribute("aria-label", "Add all main variants to order");
+    const availableSlots = MAX_SLOTS - orderItems.length;
+    addAllVariantsButton.disabled = primaryVariants.length > availableSlots;
+    addAllVariantsButton.addEventListener("click", () => addAllVariantsToOrder(item));
+    primaryRow.appendChild(addAllVariantsButton);
+
+    container.appendChild(primaryRow);
   }
 
   if (hasSubPicker) {
@@ -1143,6 +1153,19 @@ const updateAddAllButton = () => {
   addAllButton.setAttribute("aria-label", `Add ${filteredItems.length} results to order`);
 };
 
+const updateCatalogActionButtons = () => {
+  const isFull = orderItems.length >= MAX_SLOTS;
+  const availableSlots = Math.max(0, MAX_SLOTS - orderItems.length);
+  catalogList.querySelectorAll(".add-to-order").forEach((button) => {
+    button.disabled = isFull;
+  });
+  catalogList.querySelectorAll(".variant-add-all").forEach((button) => {
+    const card = button.closest(".catalog-card");
+    const variantCount = card ? Number(card.dataset.variantCount || 0) : 0;
+    button.disabled = variantCount > availableSlots;
+  });
+};
+
 const renderCatalog = () => {
   catalogList.innerHTML = "";
   const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
@@ -1192,38 +1215,40 @@ const renderCatalog = () => {
       title.textContent = item.name;
     }
 
-    const actionRow = document.createElement("div");
-    actionRow.className = "catalog-card-actions";
-
     const button = document.createElement("button");
     button.type = "button";
     button.className = "add-to-order";
-    button.textContent = "Add";
-    button.setAttribute("aria-label", "Add to order");
+    button.textContent = "+";
+    button.setAttribute("aria-label", "Add one to order");
     button.disabled = orderItems.length >= MAX_SLOTS;
     button.addEventListener("click", () => addToOrder(item));
 
     const variantCount = item.variants ? item.variants.length : 0;
-    if (variantCount > 1) {
-      const addAllVariantsButton = document.createElement("button");
-      addAllVariantsButton.type = "button";
-      addAllVariantsButton.className = "add-variants";
-      addAllVariantsButton.textContent = `Add variants (${variantCount})`;
-      const availableSlots = MAX_SLOTS - orderItems.length;
-      addAllVariantsButton.disabled = variantCount > availableSlots;
-      addAllVariantsButton.addEventListener("click", () => addAllVariantsToOrder(item));
-      actionRow.appendChild(addAllVariantsButton);
-    }
+    card.dataset.variantCount = variantCount.toString();
 
-    actionRow.appendChild(button);
+    const actionRow = document.createElement("div");
+    actionRow.className = "catalog-card-actions";
+
+    const actionLeft = document.createElement("div");
+    actionLeft.className = "catalog-action-left";
+    actionLeft.appendChild(button);
 
     const orderCount = getOrderItemCount(item);
-    if (orderCount > 0) {
-      const countBadge = document.createElement("span");
-      countBadge.className = "order-count";
-      countBadge.textContent = `x${orderCount}`;
-      card.append(countBadge);
-    }
+    const countBadge = document.createElement("span");
+    countBadge.className = "order-count";
+    countBadge.textContent = `x${orderCount}`;
+    countBadge.hidden = orderCount === 0;
+    actionLeft.appendChild(countBadge);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "remove-from-order";
+    removeButton.textContent = "−";
+    removeButton.setAttribute("aria-label", "Remove one from order");
+    removeButton.hidden = orderCount === 0;
+    removeButton.addEventListener("click", () => removeOneFromOrder(item));
+
+    actionRow.append(actionLeft, removeButton);
 
     const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
@@ -1260,7 +1285,11 @@ const updateCatalogCard = (item) => {
 
   const meta = card.querySelector(".catalog-meta");
   if (meta) {
-    meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+    const variantLabel = getVariantMetaLabel(item);
+    meta.textContent =
+      variantLabel === null
+        ? `${getCategoryLabel(item)} · ${item.kindLabel}`
+        : `${getCategoryLabel(item)} · ${item.kindLabel} · ${variantLabel}`;
   }
 
   const existingPicker = card.querySelector(".variant-picker");
@@ -1283,14 +1312,38 @@ const updateCatalogCard = (item) => {
   if (orderCount > 0) {
     if (existingBadge) {
       existingBadge.textContent = `x${orderCount}`;
+      existingBadge.hidden = false;
     } else {
       const badge = document.createElement("span");
       badge.className = "order-count";
       badge.textContent = `x${orderCount}`;
-      card.append(badge);
+      badge.hidden = false;
+      const actionLeft = card.querySelector(".catalog-action-left");
+      if (actionLeft) {
+        actionLeft.append(badge);
+      } else {
+        card.append(badge);
+      }
     }
   } else if (existingBadge) {
-    existingBadge.remove();
+    existingBadge.hidden = true;
+  }
+
+  const addButton = card.querySelector(".add-to-order");
+  if (addButton) {
+    addButton.disabled = orderItems.length >= MAX_SLOTS;
+  }
+
+  const removeButton = card.querySelector(".remove-from-order");
+  if (removeButton) {
+    removeButton.hidden = orderCount === 0;
+  }
+
+  const addVariantsButton = card.querySelector(".variant-add-all");
+  if (addVariantsButton) {
+    const variantCount = Number(card.dataset.variantCount || 0);
+    const availableSlots = Math.max(0, MAX_SLOTS - orderItems.length);
+    addVariantsButton.disabled = variantCount > availableSlots;
   }
 };
 
@@ -1419,7 +1472,9 @@ const addToOrder = (item) => {
     orderId: buildOrderId(item.hexId, variantIndex),
   });
   renderOrder();
-  renderCatalog();
+  updateCatalogCard(item);
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const addAllVariantsToOrder = (item) => {
@@ -1441,11 +1496,27 @@ const addAllVariantsToOrder = (item) => {
       ...item,
       selectedVariantIndex: variantIndex,
       selectedSubVariantIndex: subVariantIndex,
-      orderId: buildOrderId(item.hexId, variantIndex),
-    });
+    orderId: buildOrderId(item.hexId, variantIndex),
+  });
   });
   renderOrder();
-  renderCatalog();
+  updateCatalogCard(item);
+  updateAddAllButton();
+  updateCatalogActionButtons();
+};
+
+const removeOneFromOrder = (item) => {
+  const variantIndex = getSelectedVariantIndex(item);
+  const orderId = buildOrderId(item.hexId, variantIndex);
+  const index = orderItems.findIndex((orderItem) => orderItem.orderId === orderId);
+  if (index === -1) {
+    return;
+  }
+  orderItems.splice(index, 1);
+  renderOrder();
+  updateCatalogCard(item);
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const addItemsToOrder = (items) => {
@@ -1463,17 +1534,29 @@ const addItemsToOrder = (items) => {
       ...item,
       selectedVariantIndex: variantIndex,
       selectedSubVariantIndex: subVariantIndex,
-      orderId: buildOrderId(item.hexId, variantIndex),
-    });
+    orderId: buildOrderId(item.hexId, variantIndex),
+  });
   });
   renderOrder();
-  renderCatalog();
+  items.forEach((item) => updateCatalogCard(item));
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const removeFromOrder = (index) => {
-  orderItems.splice(index, 1);
+  const [removedItem] = orderItems.splice(index, 1);
   renderOrder();
-  renderCatalog();
+  if (removedItem) {
+    updateCatalogCard(removedItem);
+  }
+  updateAddAllButton();
+  updateCatalogActionButtons();
+};
+
+const refreshCatalogOrderState = () => {
+  filteredItems.forEach((item) => updateCatalogCard(item));
+  updateAddAllButton();
+  updateCatalogActionButtons();
 };
 
 const filterCatalog = () => {
@@ -1838,7 +1921,7 @@ if (addAllButton) {
 clearOrderButton.addEventListener("click", () => {
   orderItems.length = 0;
   renderOrder();
-  renderCatalog();
+  refreshCatalogOrderState();
 });
 
 copyOrderButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
@@ -1848,7 +1931,7 @@ if (drawerClearButton) {
   drawerClearButton.addEventListener("click", () => {
     orderItems.length = 0;
     renderOrder();
-    renderCatalog();
+    refreshCatalogOrderState();
   });
 }
 
