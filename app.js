@@ -1229,8 +1229,7 @@ const renderCatalog = () => {
     const orderCount = getOrderItemCount(item);
     const countBadge = document.createElement("span");
     countBadge.className = "order-count";
-    countBadge.textContent = orderCount > 0 ? `x${orderCount}` : "";
-    countBadge.hidden = orderCount === 0;
+    countBadge.textContent = `x${orderCount}`;
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -1242,7 +1241,11 @@ const renderCatalog = () => {
 
     const actionRow = document.createElement("div");
     actionRow.className = "catalog-card-actions";
-    actionRow.append(button, countBadge, removeButton);
+    if (orderCount > 0) {
+      actionRow.append(button, countBadge, removeButton);
+    } else {
+      actionRow.append(button, removeButton);
+    }
 
     const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
@@ -1325,8 +1328,7 @@ const updateCatalogCard = (item) => {
       }
     }
   } else if (existingBadge) {
-    existingBadge.textContent = "";
-    existingBadge.hidden = true;
+    existingBadge.remove();
   }
 
   const addButton = card.querySelector(".add-to-order");
