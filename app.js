@@ -1549,7 +1549,12 @@ const removeFromOrder = (index) => {
   const [removedItem] = orderItems.splice(index, 1);
   renderOrder();
   if (removedItem) {
-    updateCatalogCard(removedItem);
+    const catalogItem =
+      filteredItems.find((item) => item.hexId === removedItem.hexId) ||
+      catalogItems.find((item) => item.hexId === removedItem.hexId);
+    if (catalogItem) {
+      updateCatalogCard(catalogItem);
+    }
   }
   updateAddAllButton();
   updateCatalogActionButtons();
