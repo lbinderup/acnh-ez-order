@@ -1226,19 +1226,11 @@ const renderCatalog = () => {
     const variantCount = item.variants ? item.variants.length : 0;
     card.dataset.variantCount = variantCount.toString();
 
-    const actionRow = document.createElement("div");
-    actionRow.className = "catalog-card-actions";
-
-    const actionLeft = document.createElement("div");
-    actionLeft.className = "catalog-action-left";
-    actionLeft.appendChild(button);
-
     const orderCount = getOrderItemCount(item);
     const countBadge = document.createElement("span");
     countBadge.className = "order-count";
     countBadge.textContent = `x${orderCount}`;
     countBadge.hidden = orderCount === 0;
-    actionLeft.appendChild(countBadge);
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -1248,7 +1240,9 @@ const renderCatalog = () => {
     removeButton.hidden = orderCount === 0;
     removeButton.addEventListener("click", () => removeOneFromOrder(item));
 
-    actionRow.append(actionLeft, removeButton);
+    const actionRow = document.createElement("div");
+    actionRow.className = "catalog-card-actions";
+    actionRow.append(button, countBadge, removeButton);
 
     const variantPicker = usePreviews ? buildVariantPicker(item) : null;
 
@@ -1308,6 +1302,7 @@ const updateCatalogCard = (item) => {
   }
 
   const orderCount = getOrderItemCount(item);
+  const actionRow = card.querySelector(".catalog-card-actions");
   const existingBadge = card.querySelector(".order-count");
   if (orderCount > 0) {
     if (existingBadge) {
@@ -1318,9 +1313,13 @@ const updateCatalogCard = (item) => {
       badge.className = "order-count";
       badge.textContent = `x${orderCount}`;
       badge.hidden = false;
-      const actionLeft = card.querySelector(".catalog-action-left");
-      if (actionLeft) {
-        actionLeft.append(badge);
+      if (actionRow) {
+        const removeButton = actionRow.querySelector(".remove-from-order");
+        if (removeButton) {
+          actionRow.insertBefore(badge, removeButton);
+        } else {
+          actionRow.append(badge);
+        }
       } else {
         card.append(badge);
       }
