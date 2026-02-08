@@ -1229,7 +1229,7 @@ const renderCatalog = () => {
     const orderCount = getOrderItemCount(item);
     const countBadge = document.createElement("span");
     countBadge.className = "order-count";
-    countBadge.textContent = `x${orderCount}`;
+    countBadge.textContent = orderCount > 0 ? `x${orderCount}` : "";
     countBadge.hidden = orderCount === 0;
 
     const removeButton = document.createElement("button");
@@ -1325,6 +1325,7 @@ const updateCatalogCard = (item) => {
       }
     }
   } else if (existingBadge) {
+    existingBadge.textContent = "";
     existingBadge.hidden = true;
   }
 
