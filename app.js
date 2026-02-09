@@ -1235,7 +1235,12 @@ const getSavedOrderItemCount = (item) => {
   const variantIndex = getSelectedVariantIndex(item);
   const orderId = buildOrderId(item.hexId, variantIndex);
   return savedOrders.reduce((total, order) => {
-    const matchCount = (order.items || []).filter((orderItem) => orderItem.orderId === orderId).length;
+    const matchCount = (order.items || []).filter((orderItem) => {
+      if (orderItem.hexId) {
+        return orderItem.hexId === item.hexId;
+      }
+      return orderItem.orderId === orderId;
+    }).length;
     return total + matchCount;
   }, 0);
 };
