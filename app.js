@@ -24,7 +24,6 @@ let categoryDropdownListenerBound = false;
 let isDrawerCollapsed = false;
 
 const MAX_SLOTS = 40;
-const MAX_PREVIEW_RESULTS = 80;
 const PREVIEW_LOAD_DELAY_MS = 50;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature", "Tools", "Misc"]);
@@ -316,6 +315,11 @@ const activeSuperCategories = new Set();
 const activeSubCategoriesBySuper = new Map();
 let categoryData = new Map();
 let sortMode = "alpha";
+let previewObserver = null;
+let previewLoadIndex = 0;
+let lastSearchQuery = "";
+let lastSearchResults = [];
+let lastSearchSignature = "";
 
 const DEFAULT_SPRITE =
   "data:image/svg+xml;utf8," +
@@ -867,7 +871,86 @@ const assignSpriteWithDelay = (image, hexId, variantIndex, subVariantIndex, dela
   }, delayMs);
 };
 
-const buildSpriteFrame = (item, usePreview = true, delayMs = 0) => {
+const setLazyPreviewData = (image, hexId, variantIndex, subVariantIndex) => {
+  image.dataset.lazyPreview = "true";
+  image.dataset.hexId = hexId;
+  image.dataset.variantIndex = variantIndex ?? "";
+  image.dataset.subVariantIndex = subVariantIndex ?? "";
+  image.dataset.previewLoaded = "false";
+  image.src = DEFAULT_SPRITE;
+};
+
+const getLazyPreviewData = (image) => {
+  const hexId = image.dataset.hexId;
+  if (!hexId) {
+    return null;
+  }
+  const variantIndex =
+    image.dataset.variantIndex === "" ? null : Number.parseInt(image.dataset.variantIndex, 10);
+  const subVariantIndex =
+    image.dataset.subVariantIndex === "" ? null : Number.parseInt(image.dataset.subVariantIndex, 10);
+  return { hexId, variantIndex, subVariantIndex };
+};
+
+const handlePreviewIntersection = (entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) {
+      return;
+    }
+    const image = entry.target;
+    const data = getLazyPreviewData(image);
+    if (!data) {
+      return;
+    }
+    if (previewObserver) {
+      previewObserver.unobserve(image);
+    }
+    const delayMs = previewLoadIndex * PREVIEW_LOAD_DELAY_MS;
+    previewLoadIndex += 1;
+    assignSpriteWithDelay(image, data.hexId, data.variantIndex, data.subVariantIndex, delayMs);
+    image.dataset.previewLoaded = "true";
+  });
+};
+
+const ensurePreviewObserver = () => {
+  if (!previewObserver) {
+    previewObserver = new IntersectionObserver(handlePreviewIntersection, {
+      root: null,
+      threshold: 0.1,
+    });
+  }
+  previewObserver.disconnect();
+  previewLoadIndex = 0;
+};
+
+const observeCatalogPreviews = () => {
+  const images = catalogList.querySelectorAll("img.item-sprite[data-lazy-preview='true']");
+  if (!("IntersectionObserver" in window)) {
+    images.forEach((image) => {
+      const data = getLazyPreviewData(image);
+      if (!data) {
+        return;
+      }
+      assignSprite(image, data.hexId, data.variantIndex, data.subVariantIndex);
+      image.dataset.previewLoaded = "true";
+    });
+    return;
+  }
+  ensurePreviewObserver();
+  images.forEach((image) => {
+    if (image.dataset.previewLoaded === "true") {
+      return;
+    }
+    previewObserver.observe(image);
+  });
+};
+
+const isElementInViewport = (element) => {
+  const rect = element.getBoundingClientRect();
+  return rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth;
+};
+
+const buildSpriteFrame = (item, { usePreview = true, lazyLoad = false } = {}) => {
   const frame = document.createElement("div");
   frame.className = "sprite-frame";
 
@@ -875,13 +958,14 @@ const buildSpriteFrame = (item, usePreview = true, delayMs = 0) => {
   image.className = "item-sprite";
   image.alt = item.name;
   if (usePreview) {
-    assignSpriteWithDelay(
-      image,
-      getPreviewHexId(item),
-      getSelectedVariantIndex(item),
-      getSelectedSubVariantIndex(item),
-      delayMs
-    );
+    const hexId = getPreviewHexId(item);
+    const variantIndex = getSelectedVariantIndex(item);
+    const subVariantIndex = getSelectedSubVariantIndex(item);
+    if (lazyLoad) {
+      setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
+    } else {
+      assignSprite(image, hexId, variantIndex, subVariantIndex);
+    }
   } else {
     image.hidden = true;
   }
@@ -1188,8 +1272,8 @@ const createOrderStatusBadge = (orderCount) => {
 
 const renderCatalog = () => {
   catalogList.innerHTML = "";
-  const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
-  catalogList.classList.toggle("condensed", filteredItems.length > MAX_PREVIEW_RESULTS);
+  const usePreviews = filteredItems.length > 0;
+  catalogList.classList.toggle("condensed", filteredItems.length > 200);
 
   if (filteredItems.length === 0) {
     catalogList.innerHTML = isSearchEmpty
@@ -1199,7 +1283,7 @@ const renderCatalog = () => {
     return;
   }
 
-  filteredItems.forEach((item, index) => {
+  filteredItems.forEach((item) => {
     const card = document.createElement("article");
     card.className = "catalog-card";
     card.dataset.hexId = item.hexId;
@@ -1207,11 +1291,7 @@ const renderCatalog = () => {
       card.classList.add("condensed-card");
     }
 
-    const spriteFrame = buildSpriteFrame(
-      item,
-      usePreviews,
-      usePreviews ? index * PREVIEW_LOAD_DELAY_MS : 0
-    );
+    const spriteFrame = buildSpriteFrame(item, { usePreview: usePreviews, lazyLoad: usePreviews });
 
     let title;
     let meta;
@@ -1287,6 +1367,11 @@ const renderCatalog = () => {
   });
 
   updateAddAllButton();
+  if (usePreviews) {
+    window.requestAnimationFrame(() => {
+      observeCatalogPreviews();
+    });
+  }
 };
 
 const updateCatalogCard = (item) => {
@@ -1297,12 +1382,22 @@ const updateCatalogCard = (item) => {
 
   const image = card.querySelector(".item-sprite");
   if (image) {
-    assignSprite(
-      image,
-      getPreviewHexId(item),
-      getSelectedVariantIndex(item),
-      getSelectedSubVariantIndex(item)
-    );
+    const hexId = getPreviewHexId(item);
+    const variantIndex = getSelectedVariantIndex(item);
+    const subVariantIndex = getSelectedSubVariantIndex(item);
+    if (image.dataset.lazyPreview === "true") {
+      if (image.dataset.previewLoaded !== "true") {
+        setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
+      }
+      if (image.dataset.previewLoaded === "true" || isElementInViewport(image)) {
+        assignSprite(image, hexId, variantIndex, subVariantIndex);
+        image.dataset.previewLoaded = "true";
+      } else {
+        observeCatalogPreviews();
+      }
+    } else {
+      assignSprite(image, hexId, variantIndex, subVariantIndex);
+    }
   }
 
   const meta = card.querySelector(".catalog-meta");
@@ -1932,16 +2027,33 @@ const refreshCatalogOrderState = () => {
   updateCatalogActionButtons();
 };
 
+const buildSearchSignature = () => {
+  const activeSuper = [...activeSuperCategories].sort().join(",");
+  const activeSub = Array.from(activeSubCategoriesBySuper.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([category, subcategories]) => `${category}:${[...subcategories].sort().join(",")}`)
+    .join("|");
+  return `${activeSuper}::${activeSub}::${showUnsafeItems}::${sortMode}`;
+};
+
 const filterCatalog = () => {
   const query = searchInput.value.trim().toLowerCase();
   isSearchEmpty = query.length === 0;
   if (isSearchEmpty) {
     filteredItems = [];
+    lastSearchQuery = "";
+    lastSearchResults = [];
+    lastSearchSignature = "";
     renderCatalog();
     return;
   }
 
-  filteredItems = catalogItems.filter((item) => {
+  const signature = buildSearchSignature();
+  const canRefineSearch =
+    lastSearchQuery && query.startsWith(lastSearchQuery) && signature === lastSearchSignature;
+  const baseItems = canRefineSearch ? lastSearchResults : catalogItems;
+
+  filteredItems = baseItems.filter((item) => {
     const matchesCategory = matchesCategoryFilter(item);
     const searchable =
       `${item.name} ${item.superCategory} ${item.subCategory || ""} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
@@ -1951,6 +2063,9 @@ const filterCatalog = () => {
   });
 
   filteredItems = applySort(filteredItems);
+  lastSearchQuery = query;
+  lastSearchResults = filteredItems;
+  lastSearchSignature = signature;
   renderCatalog();
 };
 
