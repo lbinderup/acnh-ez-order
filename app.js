@@ -1170,6 +1170,13 @@ const updateCatalogActionButtons = () => {
   });
 };
 
+const createOrderStatusBadge = (orderCount) => {
+  const badge = document.createElement("div");
+  badge.className = "order-status-badge";
+  badge.textContent = `Ordered: ${orderCount}`;
+  return badge;
+};
+
 const renderCatalog = () => {
   catalogList.innerHTML = "";
   const usePreviews = filteredItems.length > 0 && filteredItems.length <= MAX_PREVIEW_RESULTS;
@@ -1234,6 +1241,10 @@ const renderCatalog = () => {
     const countBadge = document.createElement("span");
     countBadge.className = "order-count";
     countBadge.textContent = `x${orderCount}`;
+
+    if (orderCount > 0) {
+      spriteFrame.appendChild(createOrderStatusBadge(orderCount));
+    }
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -1311,6 +1322,8 @@ const updateCatalogCard = (item) => {
   const orderCount = getOrderItemCount(item);
   const actionRow = card.querySelector(".catalog-card-actions");
   const existingBadge = card.querySelector(".order-count");
+  const spriteFrame = card.querySelector(".sprite-frame");
+  const existingOrderStatus = card.querySelector(".order-status-badge");
   if (orderCount > 0) {
     if (existingBadge) {
       existingBadge.textContent = `x${orderCount}`;
@@ -1331,8 +1344,20 @@ const updateCatalogCard = (item) => {
         card.append(badge);
       }
     }
+    if (spriteFrame) {
+      if (existingOrderStatus) {
+        existingOrderStatus.textContent = `Ordered: ${orderCount}`;
+      } else {
+        spriteFrame.appendChild(createOrderStatusBadge(orderCount));
+      }
+    }
   } else if (existingBadge) {
     existingBadge.remove();
+    if (existingOrderStatus) {
+      existingOrderStatus.remove();
+    }
+  } else if (existingOrderStatus) {
+    existingOrderStatus.remove();
   }
 
   const addButton = card.querySelector(".add-to-order");
@@ -1681,6 +1706,23 @@ const updateCopyButtonFeedback = (button) => {
   }, 1500);
 };
 
+const showNewOrderToast = () => {
+  const existingToast = document.querySelector(".order-toast");
+  if (existingToast) {
+    existingToast.remove();
+  }
+  const toast = document.createElement("div");
+  toast.className = "order-toast";
+  toast.textContent = "Starting New Order";
+  document.body.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("is-hidden");
+  }, 1500);
+  window.setTimeout(() => {
+    toast.remove();
+  }, 2200);
+};
+
 const handleCopyAction = async (button, text) => {
   const didCopy = await copyToClipboard(text);
   if (didCopy) {
@@ -1785,6 +1827,7 @@ const addOrderEntries = (entries) => {
       if (!saved) {
         break;
       }
+      showNewOrderToast();
       savedOrdersUpdated = true;
       continue;
     }
