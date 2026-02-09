@@ -470,6 +470,97 @@ button:disabled {
   min-width: 240px;
 }
 
+.saved-orders-empty {
+  margin-top: 1rem;
+  color: var(--muted);
+}
+
+.saved-orders-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.saved-order-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+  background: var(--card);
+}
+
+.saved-order-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.saved-order-header h3 {
+  margin: 0;
+}
+
+.saved-order-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.saved-order-status {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-weight: 600;
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.saved-order-status.is-incomplete {
+  background: #fff8e1;
+  color: #8d6e00;
+}
+
+.saved-order-command {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.saved-order-command code {
+  background: #f2f2f2;
+  padding: 0.4rem 0.7rem;
+  border-radius: 10px;
+}
+
+.saved-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.saved-order-details {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.saved-order-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.saved-order-items {
+  margin: 0.6rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+
+button.danger {
+  background: #e53935;
+  border: none;
+  color: #fff;
+}
+
 .order-summary {
   background: var(--card);
   border: 1px solid var(--border);

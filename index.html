@@ -56,6 +56,7 @@
               <span>/ 40 slots</span>
             </div>
             <div class="controls">
+              <button id="save-order" type="button">Save order</button>
               <button id="clear-order" type="button" class="secondary">Clear order</button>
               <button id="copy-order" type="button">Copy $ordercat</button>
             </div>
@@ -72,6 +73,14 @@
           <button id="copy-command" type="button">Copy</button>
         </div>
       </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Saved Orders</h2>
+        </div>
+        <p id="saved-orders-empty" class="saved-orders-empty">No saved orders yet.</p>
+        <div id="saved-orders-list" class="saved-orders-list" aria-live="polite"></div>
+      </section>
     </main>
 
     <aside id="order-drawer" class="order-drawer" aria-live="polite" hidden>
@@ -85,6 +94,7 @@
         <div id="order-drawer-list" class="order-drawer-list"></div>
         <div class="order-drawer-actions">
           <button id="drawer-clear" type="button" class="secondary">clear</button>
+          <button id="drawer-save" type="button">save</button>
           <button id="drawer-copy" type="button">copy</button>
         </div>
       </div>
