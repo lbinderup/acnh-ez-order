@@ -1417,35 +1417,45 @@ const hydrateOrderItem = (storedItem) => {
   };
 };
 
-const persistCurrentOrder = () => {
-  if (!("localStorage" in window)) {
-    return;
+const safeStorageGet = (key) => {
+  try {
+    if (!("localStorage" in window)) {
+      return null;
+    }
+    return localStorage.getItem(key);
+  } catch (error) {
+    return null;
   }
+};
+
+const safeStorageSet = (key, value) => {
+  try {
+    if (!("localStorage" in window)) {
+      return false;
+    }
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+const persistCurrentOrder = () => {
   const payload = orderItems.map((item) => serializeOrderItem(item));
-  localStorage.setItem(STORAGE_KEYS.currentOrder, JSON.stringify(payload));
+  safeStorageSet(STORAGE_KEYS.currentOrder, JSON.stringify(payload));
 };
 
 const persistSavedOrders = () => {
-  if (!("localStorage" in window)) {
-    return;
-  }
-  localStorage.setItem(STORAGE_KEYS.savedOrders, JSON.stringify(savedOrders));
+  safeStorageSet(STORAGE_KEYS.savedOrders, JSON.stringify(savedOrders));
 };
 
 const loadSavedOrders = () => {
-  if (!("localStorage" in window)) {
-    savedOrders = [];
-    return;
-  }
-  const stored = safeParseJSON(localStorage.getItem(STORAGE_KEYS.savedOrders), []);
+  const stored = safeParseJSON(safeStorageGet(STORAGE_KEYS.savedOrders), []);
   savedOrders = Array.isArray(stored) ? stored : [];
 };
 
 const loadCurrentOrder = () => {
-  if (!("localStorage" in window)) {
-    return [];
-  }
-  const stored = safeParseJSON(localStorage.getItem(STORAGE_KEYS.currentOrder), []);
+  const stored = safeParseJSON(safeStorageGet(STORAGE_KEYS.currentOrder), []);
   return Array.isArray(stored) ? stored : [];
 };
 
