@@ -1147,6 +1147,15 @@ const getOrderItemCount = (item) => {
   return orderItems.filter((orderItem) => orderItem.orderId === orderId).length;
 };
 
+const getSavedOrderItemCount = (item) => {
+  const variantIndex = getSelectedVariantIndex(item);
+  const orderId = buildOrderId(item.hexId, variantIndex);
+  return savedOrders.reduce((total, order) => {
+    const matchCount = (order.items || []).filter((orderItem) => orderItem.orderId === orderId).length;
+    return total + matchCount;
+  }, 0);
+};
+
 const updateAddAllButton = () => {
   if (!addAllButton) {
     return;
@@ -1173,7 +1182,7 @@ const updateCatalogActionButtons = () => {
 const createOrderStatusBadge = (orderCount) => {
   const badge = document.createElement("div");
   badge.className = "order-status-badge";
-  badge.textContent = `Ordered: ${orderCount}`;
+  badge.textContent = `In saved orders: ${orderCount}`;
   return badge;
 };
 
@@ -1238,12 +1247,13 @@ const renderCatalog = () => {
     card.dataset.variantCount = variantCount.toString();
 
     const orderCount = getOrderItemCount(item);
+    const savedOrderCount = getSavedOrderItemCount(item);
     const countBadge = document.createElement("span");
     countBadge.className = "order-count";
     countBadge.textContent = `x${orderCount}`;
 
-    if (orderCount > 0) {
-      spriteFrame.appendChild(createOrderStatusBadge(orderCount));
+    if (savedOrderCount > 0) {
+      spriteFrame.appendChild(createOrderStatusBadge(savedOrderCount));
     }
 
     const removeButton = document.createElement("button");
@@ -1320,6 +1330,7 @@ const updateCatalogCard = (item) => {
   }
 
   const orderCount = getOrderItemCount(item);
+  const savedOrderCount = getSavedOrderItemCount(item);
   const actionRow = card.querySelector(".catalog-card-actions");
   const existingBadge = card.querySelector(".order-count");
   const spriteFrame = card.querySelector(".sprite-frame");
@@ -1344,19 +1355,17 @@ const updateCatalogCard = (item) => {
         card.append(badge);
       }
     }
-    if (spriteFrame) {
-      if (existingOrderStatus) {
-        existingOrderStatus.textContent = `Ordered: ${orderCount}`;
-      } else {
-        spriteFrame.appendChild(createOrderStatusBadge(orderCount));
-      }
+  }
+  if (savedOrderCount > 0 && spriteFrame) {
+    if (existingOrderStatus) {
+      existingOrderStatus.textContent = `In saved orders: ${savedOrderCount}`;
+    } else {
+      spriteFrame.appendChild(createOrderStatusBadge(savedOrderCount));
     }
   } else if (existingBadge) {
     existingBadge.remove();
-    if (existingOrderStatus) {
-      existingOrderStatus.remove();
-    }
-  } else if (existingOrderStatus) {
+  }
+  if (savedOrderCount === 0 && existingOrderStatus) {
     existingOrderStatus.remove();
   }
 
@@ -1644,6 +1653,7 @@ const renderSavedOrders = () => {
       savedOrders = savedOrders.filter((savedOrder) => savedOrder.id !== order.id);
       persistSavedOrders();
       renderSavedOrders();
+      refreshCatalogOrderState();
     });
 
     actions.append(completeButton, deleteButton);
