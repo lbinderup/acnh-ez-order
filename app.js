@@ -1962,14 +1962,17 @@ const addOrderEntries = (entries) => {
   }
   const queue = [...entries];
   let savedOrdersUpdated = false;
+  const savedOrderItems = [];
 
   while (queue.length > 0) {
     const availableSlots = MAX_SLOTS - orderItems.length;
     if (availableSlots === 0) {
+      const itemsToSave = [...orderItems];
       const saved = saveCurrentOrder({ render: false });
       if (!saved) {
         break;
       }
+      savedOrderItems.push(...itemsToSave);
       showNewOrderToast();
       savedOrdersUpdated = true;
       continue;
@@ -1981,7 +1984,7 @@ const addOrderEntries = (entries) => {
   }
 
   renderOrder();
-  refreshCatalogOrderStateForItems(entries);
+  refreshCatalogOrderStateForItems(entries.concat(savedOrderItems));
   if (savedOrdersUpdated) {
     renderSavedOrders();
   }
