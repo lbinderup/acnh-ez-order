@@ -24,14 +24,14 @@ let categoryDropdownListenerBound = false;
 let isDrawerCollapsed = false;
 
 const MAX_SLOTS = 40;
-const PREVIEW_LOAD_DELAY_MS = 50;
+const PREVIEW_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
-const GROUPED_CATEGORIES = new Set(["Clothing", "Furniture", "Materials", "Nature", "Tools", "Misc"]);
+const GROUPED_CATEGORIES = new Set(["Furniture", "Clothing", "Materials", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
   Clothing: [
     "Tops",
     "Bottoms",
-    "Dresses",
+    "Dress-up",
     "Shoes",
     "Socks",
     "Hats",
@@ -465,7 +465,7 @@ const getSubCategory = (kindName, superCategory) => {
   if (superCategory === "Clothing") {
     if (kindName.startsWith("Top_")) return "Tops";
     if (kindName.startsWith("Bottoms_")) return "Bottoms";
-    if (kindName.startsWith("Onepiece_")) return "Dresses";
+    if (kindName.startsWith("Onepiece_")) return "Dress-up";
     if (kindName.startsWith("Shoes_") || kindName.includes("Kind_Shoes")) return "Shoes";
     if (kindName.includes("Kind_Socks")) return "Socks";
     if (kindName.includes("Kind_Cap")) return "Hats";
@@ -1386,10 +1386,14 @@ const updateCatalogCard = (item) => {
     const variantIndex = getSelectedVariantIndex(item);
     const subVariantIndex = getSelectedSubVariantIndex(item);
     if (image.dataset.lazyPreview === "true") {
-      setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
-      if (isElementInViewport(image)) {
+      if (image.dataset.previewLoaded !== "true") {
+        setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
+      }
+      if (image.dataset.previewLoaded === "true" || isElementInViewport(image)) {
         assignSprite(image, hexId, variantIndex, subVariantIndex);
         image.dataset.previewLoaded = "true";
+      } else {
+        observeCatalogPreviews();
       }
     } else {
       assignSprite(image, hexId, variantIndex, subVariantIndex);
