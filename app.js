@@ -1355,6 +1355,8 @@ const updateCatalogCard = (item) => {
         card.append(badge);
       }
     }
+  } else if (existingBadge) {
+    existingBadge.remove();
   }
   if (savedOrderCount > 0 && spriteFrame) {
     if (existingOrderStatus) {
@@ -1362,10 +1364,7 @@ const updateCatalogCard = (item) => {
     } else {
       spriteFrame.appendChild(createOrderStatusBadge(savedOrderCount));
     }
-  } else if (existingBadge) {
-    existingBadge.remove();
-  }
-  if (savedOrderCount === 0 && existingOrderStatus) {
+  } else if (existingOrderStatus) {
     existingOrderStatus.remove();
   }
 
