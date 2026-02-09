@@ -49,29 +49,21 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Your Order</h2>
+          <h2>Current Order</h2>
           <div class="panel-header-actions">
             <div class="order-summary">
               <span id="slot-count">0</span>
               <span>/ 40 slots</span>
             </div>
             <div class="controls">
-              <button id="save-order" type="button">Save order</button>
-              <button id="clear-order" type="button" class="secondary">Clear order</button>
-              <button id="copy-order" type="button">Copy $ordercat</button>
+              <button id="clear-order" type="button" class="secondary">Clear</button>
+              <button id="save-order" type="button">Save</button>
+              <button id="copy-order" type="button">Copy</button>
+              <button id="paste-order" type="button" class="secondary">Paste</button>
             </div>
           </div>
         </div>
         <div id="order-slots" class="order-grid" aria-live="polite"></div>
-      </section>
-
-      <section class="panel">
-        <h2>$ordercat Command</h2>
-        <p>Use this command with your external utility.</p>
-        <div class="order-command">
-          <code id="order-command">$ordercat</code>
-          <button id="copy-command" type="button">Copy</button>
-        </div>
       </section>
 
       <section class="panel">
@@ -93,9 +85,9 @@
       <div class="order-drawer-body">
         <div id="order-drawer-list" class="order-drawer-list"></div>
         <div class="order-drawer-actions">
-          <button id="drawer-clear" type="button" class="secondary">clear</button>
-          <button id="drawer-save" type="button">save</button>
-          <button id="drawer-copy" type="button">copy</button>
+          <button id="drawer-clear" type="button" class="secondary">Clear</button>
+          <button id="drawer-save" type="button">Save</button>
+          <button id="drawer-copy" type="button">Copy</button>
         </div>
       </div>
     </aside>

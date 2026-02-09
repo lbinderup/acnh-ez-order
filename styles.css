@@ -561,6 +561,11 @@ button.danger {
   color: #fff;
 }
 
+button.is-copied {
+  background: #c8e6c9;
+  color: #1b5e20;
+}
+
 .order-summary {
   background: var(--card);
   border: 1px solid var(--border);

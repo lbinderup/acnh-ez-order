@@ -6,8 +6,7 @@ const clearSearchButton = document.getElementById("clear-search");
 const clearOrderButton = document.getElementById("clear-order");
 const saveOrderButton = document.getElementById("save-order");
 const copyOrderButton = document.getElementById("copy-order");
-const orderCommand = document.getElementById("order-command");
-const copyCommandButton = document.getElementById("copy-command");
+const pasteOrderButton = document.getElementById("paste-order");
 const slotCount = document.getElementById("slot-count");
 const orderDrawer = document.getElementById("order-drawer");
 const drawerSlotCount = document.getElementById("drawer-slot-count");
@@ -79,6 +78,7 @@ const spriteLoadPromises = new Map();
 const unitIconCache = new Map();
 const unitIconLoadPromises = new Map();
 const spriteVariantMap = new Map();
+const orderIdLookup = new Map();
 let savedOrders = [];
 
 const STORAGE_KEYS = {
@@ -1593,8 +1593,8 @@ const renderSavedOrders = () => {
     const copyButton = document.createElement("button");
     copyButton.type = "button";
     copyButton.className = "secondary";
-    copyButton.textContent = "Copy $ordercat";
-    copyButton.addEventListener("click", () => copyToClipboard(commandCode.textContent));
+    copyButton.textContent = "Copy";
+    copyButton.addEventListener("click", () => handleCopyAction(copyButton, commandCode.textContent));
     commandRow.append(commandCode, copyButton);
 
     const actions = document.createElement("div");
@@ -1643,16 +1643,19 @@ const renderSavedOrders = () => {
 
 const updateOrderCommand = () => {
   if (orderItems.length === 0) {
-    orderCommand.textContent = "$ordercat";
     copyOrderButton.disabled = true;
-    copyCommandButton.disabled = true;
     return;
   }
 
-  const orderIds = orderItems.map((item) => item.orderId);
-  orderCommand.textContent = `$ordercat ${orderIds.join(" ")}`;
   copyOrderButton.disabled = false;
-  copyCommandButton.disabled = false;
+};
+
+const buildCurrentOrderCommand = () => {
+  if (orderItems.length === 0) {
+    return "$ordercat";
+  }
+  const orderIds = orderItems.map((item) => item.orderId);
+  return `$ordercat ${orderIds.join(" ")}`;
 };
 
 const updateSaveButtons = () => {
@@ -1662,6 +1665,103 @@ const updateSaveButtons = () => {
   if (drawerSaveButton) {
     drawerSaveButton.disabled = orderItems.length === 0;
   }
+};
+
+const updateCopyButtonFeedback = (button) => {
+  if (!button) {
+    return;
+  }
+  const originalText = button.dataset.originalText || button.textContent;
+  button.dataset.originalText = originalText;
+  button.textContent = "Copied";
+  button.classList.add("is-copied");
+  window.setTimeout(() => {
+    button.textContent = originalText;
+    button.classList.remove("is-copied");
+  }, 1500);
+};
+
+const handleCopyAction = async (button, text) => {
+  const didCopy = await copyToClipboard(text);
+  if (didCopy) {
+    updateCopyButtonFeedback(button);
+  }
+};
+
+const buildOrderIdLookup = () => {
+  orderIdLookup.clear();
+  catalogItems.forEach((item) => {
+    if (item.variants && item.variants.length > 0) {
+      item.variants.forEach((variant) => {
+        orderIdLookup.set(variant.orderId, {
+          item,
+          variantIndex: variant.index,
+        });
+      });
+    } else {
+      orderIdLookup.set(item.hexId, {
+        item,
+        variantIndex: null,
+      });
+    }
+  });
+};
+
+const parseOrderCommand = (text) => {
+  if (!text) {
+    return null;
+  }
+  const tokens = text.trim().split(/\s+/);
+  if (tokens.length === 0) {
+    return null;
+  }
+  if (tokens[0].toLowerCase() !== "$ordercat") {
+    return null;
+  }
+  return tokens.slice(1);
+};
+
+const replaceOrderFromCommand = async () => {
+  const shouldReplace = window.confirm(
+    "Replace the current order with the $ordercat command in your clipboard? This will remove current items."
+  );
+  if (!shouldReplace) {
+    return;
+  }
+  let clipboardText = "";
+  try {
+    clipboardText = await navigator.clipboard.readText();
+  } catch (error) {
+    window.alert("Unable to read from clipboard.");
+    return;
+  }
+  const orderIds = parseOrderCommand(clipboardText);
+  if (!orderIds) {
+    window.alert("Clipboard does not contain a valid $ordercat command.");
+    return;
+  }
+  const entries = orderIds
+    .map((orderId) => {
+      const match = orderIdLookup.get(orderId);
+      if (!match) {
+        return null;
+      }
+      const subVariants =
+        match.item.subVariantsByVariant && match.variantIndex !== null
+          ? match.item.subVariantsByVariant.get(match.variantIndex) || []
+          : [];
+      const subVariantIndex = subVariants.length > 0 ? subVariants[0] : null;
+      return createOrderEntry(match.item, match.variantIndex, subVariantIndex);
+    })
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    window.alert("No items from that $ordercat command were recognized.");
+    return;
+  }
+
+  orderItems.length = 0;
+  addOrderEntries(entries);
 };
 
 const createOrderEntry = (item, variantIndex, subVariantIndex) => ({
@@ -1966,8 +2066,10 @@ const populateCategoryToggles = () => {
 const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch (error) {
     window.alert("Unable to copy. Please copy manually.");
+    return false;
   }
 };
 
@@ -2090,6 +2192,7 @@ const init = async () => {
   await loadSpriteVariants();
   catalogItems = await loadCatalogItems();
   applyPreviewIconOverrides(catalogItems);
+  buildOrderIdLookup();
   categoryData = buildCategoryData(catalogItems);
   setDefaultCategoryFilters();
   filteredItems = [];
@@ -2147,8 +2250,11 @@ if (saveOrderButton) {
   saveOrderButton.addEventListener("click", () => saveCurrentOrder());
 }
 
-copyOrderButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
-copyCommandButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
+copyOrderButton.addEventListener("click", () => handleCopyAction(copyOrderButton, buildCurrentOrderCommand()));
+
+if (pasteOrderButton) {
+  pasteOrderButton.addEventListener("click", () => replaceOrderFromCommand());
+}
 
 if (drawerClearButton) {
   drawerClearButton.addEventListener("click", () => {
@@ -2163,7 +2269,7 @@ if (drawerSaveButton) {
 }
 
 if (drawerCopyButton) {
-  drawerCopyButton.addEventListener("click", () => copyToClipboard(orderCommand.textContent));
+  drawerCopyButton.addEventListener("click", () => handleCopyAction(drawerCopyButton, buildCurrentOrderCommand()));
 }
 
 if (orderDrawerToggle) {
