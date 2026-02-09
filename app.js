@@ -1927,6 +1927,30 @@ const createOrderEntry = (item, variantIndex, subVariantIndex) => ({
   orderId: buildOrderId(item.hexId, variantIndex),
 });
 
+const refreshCatalogOrderStateForItems = (items) => {
+  if (!items || items.length === 0) {
+    updateAddAllButton();
+    updateCatalogActionButtons();
+    return;
+  }
+  const uniqueItems = new Map();
+  items.forEach((item) => {
+    if (!item || !item.hexId) {
+      return;
+    }
+    if (!uniqueItems.has(item.hexId)) {
+      uniqueItems.set(item.hexId, item);
+    }
+  });
+  if (uniqueItems.size >= filteredItems.length) {
+    refreshCatalogOrderState();
+    return;
+  }
+  uniqueItems.forEach((item) => updateCatalogCard(item));
+  updateAddAllButton();
+  updateCatalogActionButtons();
+};
+
 const addOrderEntries = (entries) => {
   if (!entries || entries.length === 0) {
     return;
@@ -1952,7 +1976,7 @@ const addOrderEntries = (entries) => {
   }
 
   renderOrder();
-  refreshCatalogOrderState();
+  refreshCatalogOrderStateForItems(entries);
   if (savedOrdersUpdated) {
     renderSavedOrders();
   }
