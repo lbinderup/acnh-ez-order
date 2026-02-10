@@ -101,7 +101,7 @@
           <button id="close-flower-generator" type="button" class="secondary">Close</button>
         </div>
         <p class="modal-description">
-          Uses the SourceCode flower-mapping approach: each pixel is matched to the nearest flower color.
+          Uses the SourceCode flower-mapping approach: each pixel is matched to the nearest flower color. Gene flags can be assigned to generated flowers before adding.
         </p>
         <div class="modal-controls">
           <label class="select-label" for="flower-grid-size">
@@ -118,6 +118,17 @@
           </label>
           <button id="run-flower-generator" type="button">Generate</button>
         </div>
+        <fieldset class="flower-gene-controls">
+          <legend>Assigned flower genes for added items</legend>
+          <label><input id="flower-gene-r1" type="checkbox" />R1</label>
+          <label><input id="flower-gene-r2" type="checkbox" />R2</label>
+          <label><input id="flower-gene-y1" type="checkbox" />Y1</label>
+          <label><input id="flower-gene-y2" type="checkbox" />Y2</label>
+          <label><input id="flower-gene-w1" type="checkbox" checked />W1</label>
+          <label><input id="flower-gene-w2" type="checkbox" checked />W2</label>
+          <label><input id="flower-gene-s1" type="checkbox" />S1</label>
+          <label><input id="flower-gene-s2" type="checkbox" />S2</label>
+        </fieldset>
         <p id="flower-generator-status" class="modal-status">Upload an image and click Generate.</p>
         <div id="flower-generator-results" class="flower-generator-results"></div>
         <div class="modal-actions">

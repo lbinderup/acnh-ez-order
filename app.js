@@ -29,10 +29,28 @@ const flowerGridSizeSelect = document.getElementById("flower-grid-size");
 const flowerGeneratorStatus = document.getElementById("flower-generator-status");
 const flowerGeneratorResults = document.getElementById("flower-generator-results");
 const addSelectedFlowersButton = document.getElementById("add-selected-flowers");
+const flowerGeneR1 = document.getElementById("flower-gene-r1");
+const flowerGeneR2 = document.getElementById("flower-gene-r2");
+const flowerGeneY1 = document.getElementById("flower-gene-y1");
+const flowerGeneY2 = document.getElementById("flower-gene-y2");
+const flowerGeneW1 = document.getElementById("flower-gene-w1");
+const flowerGeneW2 = document.getElementById("flower-gene-w2");
+const flowerGeneS1 = document.getElementById("flower-gene-s1");
+const flowerGeneS2 = document.getElementById("flower-gene-s2");
 let categoryDropdownListenerBound = false;
 let isDrawerCollapsed = false;
 
 const MAX_SLOTS = 40;
+const FLOWER_GENE_FLAGS = {
+  R1: 1 << 0,
+  R2: 1 << 1,
+  Y1: 1 << 2,
+  Y2: 1 << 3,
+  W1: 1 << 4,
+  W2: 1 << 5,
+  S1: 1 << 6,
+  S2: 1 << 7,
+};
 const PREVIEW_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Furniture", "Clothing", "Materials", "Nature", "Tools", "Misc"]);
@@ -1323,7 +1341,7 @@ const renderCatalog = () => {
       meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel}`;
 	  }
 	  else {
-      meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+      meta.textContent = getOrderItemMetaText(item);
 	  }
     } else {
       title = document.createElement("div");
@@ -1495,6 +1513,36 @@ const updateCatalogCard = (item) => {
   }
 };
 
+const getSelectedFlowerGeneValue = () => {
+  let gene = 0;
+  if (flowerGeneR1 && flowerGeneR1.checked) gene |= FLOWER_GENE_FLAGS.R1;
+  if (flowerGeneR2 && flowerGeneR2.checked) gene |= FLOWER_GENE_FLAGS.R2;
+  if (flowerGeneY1 && flowerGeneY1.checked) gene |= FLOWER_GENE_FLAGS.Y1;
+  if (flowerGeneY2 && flowerGeneY2.checked) gene |= FLOWER_GENE_FLAGS.Y2;
+  if (flowerGeneW1 && !flowerGeneW1.checked) gene |= FLOWER_GENE_FLAGS.W1;
+  if (flowerGeneW2 && !flowerGeneW2.checked) gene |= FLOWER_GENE_FLAGS.W2;
+  if (flowerGeneS1 && flowerGeneS1.checked) gene |= FLOWER_GENE_FLAGS.S1;
+  if (flowerGeneS2 && flowerGeneS2.checked) gene |= FLOWER_GENE_FLAGS.S2;
+  return gene;
+};
+
+const formatFlowerGeneLabel = (geneValue) => {
+  if (geneValue === null || geneValue === undefined) {
+    return null;
+  }
+  const normalized = Number(geneValue) & 0xff;
+  return `Gene 0x${normalized.toString(16).toUpperCase().padStart(2, "0")}`;
+};
+
+const getOrderItemMetaText = (item) => {
+  const base = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+  const geneLabel = formatFlowerGeneLabel(item.flowerGene);
+  if (!geneLabel) {
+    return base;
+  }
+  return `${base} · ${geneLabel}`;
+};
+
 const safeParseJSON = (value, fallback) => {
   if (!value) {
     return fallback;
@@ -1512,6 +1560,7 @@ const serializeOrderItem = (item) => ({
   orderId: item.orderId,
   selectedVariantIndex: item.selectedVariantIndex ?? null,
   selectedSubVariantIndex: item.selectedSubVariantIndex ?? null,
+  flowerGene: item.flowerGene ?? null,
 });
 
 const hydrateOrderItem = (storedItem) => {
@@ -1524,6 +1573,7 @@ const hydrateOrderItem = (storedItem) => {
     selectedVariantIndex: storedItem.selectedVariantIndex ?? getSelectedVariantIndex(catalogItem),
     selectedSubVariantIndex: storedItem.selectedSubVariantIndex ?? getSelectedSubVariantIndex(catalogItem),
     orderId: storedItem.orderId ?? buildOrderId(catalogItem.hexId, storedItem.selectedVariantIndex ?? null),
+    flowerGene: storedItem.flowerGene ?? null,
   };
 };
 
@@ -1617,7 +1667,7 @@ const renderOrder = () => {
 
     const meta = document.createElement("div");
     meta.className = "catalog-meta";
-    meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${getVariantMetaLabel(item)}`;
+    meta.textContent = getOrderItemMetaText(item);
 
     const button = document.createElement("button");
     button.type = "button";
@@ -1686,7 +1736,7 @@ const renderOrderDrawer = () => {
 
       const name = document.createElement("div");
       name.className = "order-drawer-name";
-      name.textContent = item.name;
+      name.textContent = formatFlowerGeneLabel(item.flowerGene) ? `${item.name} (${formatFlowerGeneLabel(item.flowerGene)})` : item.name;
 
       row.append(removeButton, icon, name);
       orderDrawerList.appendChild(row);
@@ -2306,6 +2356,7 @@ const addGeneratedFlowersToOrder = () => {
   }
 
   const entries = [];
+  const flowerGene = getSelectedFlowerGeneValue();
   flowerGeneratorResults.querySelectorAll("input[type='checkbox'][data-index]").forEach((checkbox) => {
     if (!(checkbox instanceof HTMLInputElement) || !checkbox.checked) {
       return;
@@ -2319,7 +2370,9 @@ const addGeneratedFlowersToOrder = () => {
     const variantIndex = getSelectedVariantIndex(row.item);
     const subVariantIndex = getSelectedSubVariantIndex(row.item);
     for (let i = 0; i < row.count; i += 1) {
-      entries.push(createOrderEntry(row.item, variantIndex, subVariantIndex));
+      const entry = createOrderEntry(row.item, variantIndex, subVariantIndex);
+      entry.flowerGene = flowerGene;
+      entries.push(entry);
     }
   });
 
@@ -2329,7 +2382,7 @@ const addGeneratedFlowersToOrder = () => {
   }
 
   addOrderEntries(entries);
-  flowerGeneratorStatus.textContent = `Added ${entries.length} generated flowers to your order queue.`;
+  flowerGeneratorStatus.textContent = `Added ${entries.length} generated flowers to your order queue (${formatFlowerGeneLabel(flowerGene)}).`;
 };
 
 const openFlowerGenerator = () => {
