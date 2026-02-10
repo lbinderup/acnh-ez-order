@@ -40,6 +40,7 @@
             <input id="unsafe-toggle" type="checkbox" />
             <span>Unsafe Items</span>
           </label>
+          <button id="open-flower-generator" type="button" class="secondary">Generate Flowers</button>
         </div>
         <div id="catalog-list" class="catalog-grid" aria-live="polite"></div>
         <div class="catalog-actions">
@@ -91,6 +92,39 @@
         </div>
       </div>
     </aside>
+
+    <div id="flower-generator-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-flower-modal="true"></div>
+      <section class="modal-content" role="dialog" aria-modal="true" aria-labelledby="flower-generator-title">
+        <div class="modal-header">
+          <h3 id="flower-generator-title">Flower Generator</h3>
+          <button id="close-flower-generator" type="button" class="secondary">Close</button>
+        </div>
+        <p class="modal-description">
+          Uses the SourceCode flower-mapping approach: each pixel is matched to the nearest flower color.
+        </p>
+        <div class="modal-controls">
+          <label class="select-label" for="flower-grid-size">
+            Grid size
+            <select id="flower-grid-size">
+              <option value="8">8 × 8</option>
+              <option value="16" selected>16 × 16</option>
+              <option value="32">32 × 32</option>
+            </select>
+          </label>
+          <label class="select-label" for="flower-generator-file">
+            Source image
+            <input id="flower-generator-file" type="file" accept="image/*" />
+          </label>
+          <button id="run-flower-generator" type="button">Generate</button>
+        </div>
+        <p id="flower-generator-status" class="modal-status">Upload an image and click Generate.</p>
+        <div id="flower-generator-results" class="flower-generator-results"></div>
+        <div class="modal-actions">
+          <button id="add-selected-flowers" type="button" disabled>Add selected flowers</button>
+        </div>
+      </section>
+    </div>
 
     <footer>
       <p>

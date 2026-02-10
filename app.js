@@ -20,6 +20,15 @@ const sortSelect = document.getElementById("sort-select");
 const addAllButton = document.getElementById("add-all");
 const savedOrdersList = document.getElementById("saved-orders-list");
 const savedOrdersEmpty = document.getElementById("saved-orders-empty");
+const openFlowerGeneratorButton = document.getElementById("open-flower-generator");
+const flowerGeneratorModal = document.getElementById("flower-generator-modal");
+const closeFlowerGeneratorButton = document.getElementById("close-flower-generator");
+const runFlowerGeneratorButton = document.getElementById("run-flower-generator");
+const flowerGeneratorFileInput = document.getElementById("flower-generator-file");
+const flowerGridSizeSelect = document.getElementById("flower-grid-size");
+const flowerGeneratorStatus = document.getElementById("flower-generator-status");
+const flowerGeneratorResults = document.getElementById("flower-generator-results");
+const addSelectedFlowersButton = document.getElementById("add-selected-flowers");
 let categoryDropdownListenerBound = false;
 let isDrawerCollapsed = false;
 
@@ -79,6 +88,8 @@ const unitIconLoadPromises = new Map();
 const spriteVariantMap = new Map();
 const orderIdLookup = new Map();
 let savedOrders = [];
+const flowerColorCache = new Map();
+let generatedFlowerRows = [];
 
 const STORAGE_KEYS = {
   currentOrder: "acnh-ez-order:current-order",
@@ -2038,6 +2049,304 @@ const addItemsToOrder = (items) => {
   addOrderEntries(entries);
 };
 
+const getFlowerCatalogItems = () =>
+  catalogItems.filter(
+    (item) => item && item.superCategory === "Nature" && item.subCategory === "Flowers" && !item.isUnsafe
+  );
+
+const areIntegersClose = (a, b, tolerance) => Math.abs(a - b) < tolerance;
+
+const isMonotoneColor = (r, g, b, tolerance) =>
+  areIntegersClose(r, g, tolerance) && areIntegersClose(r, b, tolerance) && areIntegersClose(g, b, tolerance);
+
+const computeFlowerSpriteAverageColor = (imageData) => {
+  const { data } = imageData;
+  const tolerance = 10;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let monoR = 0;
+  let monoG = 0;
+  let monoB = 0;
+  let loadedCount = 0;
+  let monoCount = 0;
+
+  const startIndex = Math.floor((data.length / 4) * 0.6) * 4;
+  for (let i = startIndex; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha < 5) {
+      continue;
+    }
+    const cr = data[i];
+    const cg = data[i + 1];
+    const cb = data[i + 2];
+    if (isMonotoneColor(cr, cg, cb, tolerance)) {
+      monoR += cr;
+      monoG += cg;
+      monoB += cb;
+      monoCount += 1;
+    } else {
+      r += cr;
+      g += cg;
+      b += cb;
+      loadedCount += 1;
+    }
+  }
+
+  if (loadedCount === 0 && monoCount === 0) {
+    return { r: 255, g: 255, b: 255 };
+  }
+
+  if (!areIntegersClose(monoCount, loadedCount, Math.floor((data.length / 4) * 0.1))) {
+    r += monoR;
+    g += monoG;
+    b += monoB;
+    loadedCount += monoCount;
+  } else {
+    r = monoR;
+    g = monoG;
+    b = monoB;
+    loadedCount = monoCount;
+  }
+
+  const safeCount = Math.max(loadedCount, 1);
+  return {
+    r: Math.round(r / safeCount),
+    g: Math.round(g / safeCount),
+    b: Math.round(b / safeCount),
+  };
+};
+
+const getFlowerColorProfile = async (item) => {
+  const profileKey = item.orderId;
+  if (flowerColorCache.has(profileKey)) {
+    return flowerColorCache.get(profileKey);
+  }
+
+  const hexId = getPreviewHexId(item);
+  const variantIndex = getSelectedVariantIndex(item);
+  const subVariantIndex = getSelectedSubVariantIndex(item);
+  const spriteUrl = await resolveSpriteUrl(hexId, variantIndex, subVariantIndex);
+  if (!spriteUrl) {
+    return null;
+  }
+
+  const image = new Image();
+  image.src = spriteUrl;
+  await image.decode();
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+  context.drawImage(image, 0, 0);
+  const color = computeFlowerSpriteAverageColor(context.getImageData(0, 0, canvas.width, canvas.height));
+  const profile = { item, color, spriteUrl };
+  flowerColorCache.set(profileKey, profile);
+  return profile;
+};
+
+const clearFlowerGeneratorResults = (message = "Upload an image and click Generate.") => {
+  generatedFlowerRows = [];
+  if (flowerGeneratorResults) {
+    flowerGeneratorResults.innerHTML = "";
+  }
+  if (flowerGeneratorStatus) {
+    flowerGeneratorStatus.textContent = message;
+  }
+  if (addSelectedFlowersButton) {
+    addSelectedFlowersButton.disabled = true;
+  }
+};
+
+const renderFlowerGeneratorRows = (rows) => {
+  if (!flowerGeneratorResults) {
+    return;
+  }
+  flowerGeneratorResults.innerHTML = "";
+
+  rows.forEach((row, index) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "flower-generator-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    checkbox.dataset.index = index.toString();
+
+    const sprite = document.createElement("img");
+    sprite.alt = row.item.name;
+    sprite.src = row.spriteUrl || DEFAULT_SPRITE;
+
+    const name = document.createElement("span");
+    name.textContent = row.item.name;
+
+    const count = document.createElement("span");
+    count.className = "flower-generator-count";
+    count.textContent = `x${row.count}`;
+
+    wrapper.append(checkbox, sprite, name, count);
+    flowerGeneratorResults.appendChild(wrapper);
+  });
+
+  if (addSelectedFlowersButton) {
+    addSelectedFlowersButton.disabled = rows.length === 0;
+  }
+};
+
+const generateFlowersFromImage = async () => {
+  if (!flowerGeneratorFileInput || !flowerGridSizeSelect || !flowerGeneratorStatus) {
+    return;
+  }
+
+  const sourceFile = flowerGeneratorFileInput.files && flowerGeneratorFileInput.files[0];
+  if (!sourceFile) {
+    clearFlowerGeneratorResults("Please choose an image file first.");
+    return;
+  }
+
+  const flowerItems = getFlowerCatalogItems();
+  if (flowerItems.length === 0) {
+    clearFlowerGeneratorResults("No flower catalog items were found.");
+    return;
+  }
+
+  const gridSize = Number.parseInt(flowerGridSizeSelect.value, 10);
+  if (!Number.isFinite(gridSize) || gridSize <= 0) {
+    clearFlowerGeneratorResults("Invalid grid size selected.");
+    return;
+  }
+
+  flowerGeneratorStatus.textContent = "Building flower color map...";
+  const profiles = (await Promise.all(flowerItems.map((item) => getFlowerColorProfile(item)))).filter(Boolean);
+  if (profiles.length === 0) {
+    clearFlowerGeneratorResults("Could not resolve any flower sprites for color matching.");
+    return;
+  }
+
+  flowerGeneratorStatus.textContent = "Converting image pixels to flower matches...";
+  const imageUrl = URL.createObjectURL(sourceFile);
+
+  try {
+    const image = new Image();
+    image.src = imageUrl;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = gridSize;
+    canvas.height = gridSize;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      clearFlowerGeneratorResults("Canvas rendering is unavailable in this browser.");
+      return;
+    }
+
+    context.imageSmoothingEnabled = true;
+    context.clearRect(0, 0, gridSize, gridSize);
+    context.drawImage(image, 0, 0, gridSize, gridSize);
+
+    const pixels = context.getImageData(0, 0, gridSize, gridSize).data;
+    const tally = new Map();
+
+    for (let i = 0; i < pixels.length; i += 4) {
+      const alpha = pixels[i + 3];
+      if (alpha <= 50) {
+        continue;
+      }
+
+      const pr = pixels[i];
+      const pg = pixels[i + 1];
+      const pb = pixels[i + 2];
+
+      let closest = null;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      profiles.forEach((profile) => {
+        const dr = profile.color.r - pr;
+        const dg = profile.color.g - pg;
+        const db = profile.color.b - pb;
+        const distance = dr * dr + dg * dg + db * db;
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closest = profile;
+        }
+      });
+
+      if (!closest) {
+        continue;
+      }
+
+      const key = closest.item.orderId;
+      if (!tally.has(key)) {
+        tally.set(key, { item: closest.item, spriteUrl: closest.spriteUrl, count: 0 });
+      }
+      tally.get(key).count += 1;
+    }
+
+    generatedFlowerRows = Array.from(tally.values()).sort((a, b) => b.count - a.count);
+    if (generatedFlowerRows.length === 0) {
+      clearFlowerGeneratorResults("No visible pixels were detected in the image.");
+      return;
+    }
+
+    flowerGeneratorStatus.textContent = `Generated ${generatedFlowerRows.length} flower types from ${
+      gridSize * gridSize
+    } pixels.`;
+    renderFlowerGeneratorRows(generatedFlowerRows);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+};
+
+const addGeneratedFlowersToOrder = () => {
+  if (!flowerGeneratorResults || generatedFlowerRows.length === 0) {
+    return;
+  }
+
+  const entries = [];
+  flowerGeneratorResults.querySelectorAll("input[type='checkbox'][data-index]").forEach((checkbox) => {
+    if (!(checkbox instanceof HTMLInputElement) || !checkbox.checked) {
+      return;
+    }
+    const rowIndex = Number.parseInt(checkbox.dataset.index || "", 10);
+    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= generatedFlowerRows.length) {
+      return;
+    }
+
+    const row = generatedFlowerRows[rowIndex];
+    const variantIndex = getSelectedVariantIndex(row.item);
+    const subVariantIndex = getSelectedSubVariantIndex(row.item);
+    for (let i = 0; i < row.count; i += 1) {
+      entries.push(createOrderEntry(row.item, variantIndex, subVariantIndex));
+    }
+  });
+
+  if (entries.length === 0) {
+    flowerGeneratorStatus.textContent = "Select at least one flower type to add.";
+    return;
+  }
+
+  addOrderEntries(entries);
+  flowerGeneratorStatus.textContent = `Added ${entries.length} generated flowers to your order queue.`;
+};
+
+const openFlowerGenerator = () => {
+  if (!flowerGeneratorModal) {
+    return;
+  }
+  flowerGeneratorModal.hidden = false;
+  clearFlowerGeneratorResults();
+};
+
+const closeFlowerGenerator = () => {
+  if (!flowerGeneratorModal) {
+    return;
+  }
+  flowerGeneratorModal.hidden = true;
+};
+
 const removeFromOrder = (index) => {
   const [removedItem] = orderItems.splice(index, 1);
   renderOrder();
@@ -2487,5 +2796,44 @@ if (orderDrawerToggle) {
     renderOrderDrawer();
   });
 }
+
+if (openFlowerGeneratorButton) {
+  openFlowerGeneratorButton.addEventListener("click", openFlowerGenerator);
+}
+
+if (closeFlowerGeneratorButton) {
+  closeFlowerGeneratorButton.addEventListener("click", closeFlowerGenerator);
+}
+
+if (runFlowerGeneratorButton) {
+  runFlowerGeneratorButton.addEventListener("click", () => {
+    generateFlowersFromImage().catch((error) => {
+      console.error("Flower generation failed.", error);
+      clearFlowerGeneratorResults("Flower generation failed. Check the console for details.");
+    });
+  });
+}
+
+if (addSelectedFlowersButton) {
+  addSelectedFlowersButton.addEventListener("click", addGeneratedFlowersToOrder);
+}
+
+if (flowerGeneratorModal) {
+  flowerGeneratorModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.closeFlowerModal === "true") {
+      closeFlowerGenerator();
+    }
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && flowerGeneratorModal && !flowerGeneratorModal.hidden) {
+    closeFlowerGenerator();
+  }
+});
 
 init();
