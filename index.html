@@ -40,6 +40,7 @@
             <input id="unsafe-toggle" type="checkbox" />
             <span>Unsafe Items</span>
           </label>
+          <button id="open-flower-generator" type="button" class="secondary">Generate Flowers</button>
         </div>
         <div id="catalog-list" class="catalog-grid" aria-live="polite"></div>
         <div class="catalog-actions">
@@ -91,6 +92,50 @@
         </div>
       </div>
     </aside>
+
+    <div id="flower-generator-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-flower-modal="true"></div>
+      <section class="modal-content" role="dialog" aria-modal="true" aria-labelledby="flower-generator-title">
+        <div class="modal-header">
+          <h3 id="flower-generator-title">Flower Generator</h3>
+          <button id="close-flower-generator" type="button" class="secondary">Close</button>
+        </div>
+        <p class="modal-description">
+          Uses the SourceCode flower-mapping approach: each pixel is matched to the nearest flower color. Gene flags can be assigned to generated flowers before adding.
+        </p>
+        <div class="modal-controls">
+          <label class="select-label" for="flower-grid-size">
+            Grid size
+            <select id="flower-grid-size">
+              <option value="8">8 × 8</option>
+              <option value="16" selected>16 × 16</option>
+              <option value="32">32 × 32</option>
+            </select>
+          </label>
+          <label class="select-label" for="flower-generator-file">
+            Source image
+            <input id="flower-generator-file" type="file" accept="image/*" />
+          </label>
+          <button id="run-flower-generator" type="button">Generate</button>
+        </div>
+        <fieldset class="flower-gene-controls">
+          <legend>Assigned flower genes for added items</legend>
+          <label><input id="flower-gene-r1" type="checkbox" />R1</label>
+          <label><input id="flower-gene-r2" type="checkbox" />R2</label>
+          <label><input id="flower-gene-y1" type="checkbox" />Y1</label>
+          <label><input id="flower-gene-y2" type="checkbox" />Y2</label>
+          <label><input id="flower-gene-w1" type="checkbox" checked />W1</label>
+          <label><input id="flower-gene-w2" type="checkbox" checked />W2</label>
+          <label><input id="flower-gene-s1" type="checkbox" />S1</label>
+          <label><input id="flower-gene-s2" type="checkbox" />S2</label>
+        </fieldset>
+        <p id="flower-generator-status" class="modal-status">Upload an image and click Generate.</p>
+        <div id="flower-generator-results" class="flower-generator-results"></div>
+        <div class="modal-actions">
+          <button id="add-selected-flowers" type="button" disabled>Add selected flowers</button>
+        </div>
+      </section>
+    </div>
 
     <footer>
       <p>
