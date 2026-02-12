@@ -617,6 +617,17 @@ const getSubCategory = (kindName, superCategory) => {
 const getCategoryLabel = (item) =>
   item.subCategory ? `${item.superCategory} · ${item.subCategory}` : item.superCategory;
 
+const getDisplayItemName = (item) => item.nameVariantBaseName || item.name;
+
+const getSelectedNameVariantLabel = (item) => {
+  if (!Array.isArray(item.nameVariantOptions) || item.nameVariantOptions.length <= 1) {
+    return null;
+  }
+  const selected = getSelectedNameVariantItem(item);
+  const selectedOption = item.nameVariantOptions.find((option) => option.item.hexId === selected.hexId);
+  return selectedOption ? selectedOption.label : null;
+};
+
 const toTitleCase = (value) => value.replace(/\b\w/g, (char) => char.toUpperCase());
 
 const buildDisplayNames = (rawNames) => {
@@ -985,11 +996,12 @@ const buildSpriteFrame = (item, { usePreview = true, lazyLoad = false } = {}) =>
 
   const image = document.createElement("img");
   image.className = "item-sprite";
-  image.alt = item.name;
+  image.alt = getDisplayItemName(item);
   if (usePreview) {
+    const selectedItem = getSelectedNameVariantItem(item);
     const hexId = getPreviewHexId(item);
-    const variantIndex = getSelectedVariantIndex(item);
-    const subVariantIndex = getSelectedSubVariantIndex(item);
+    const variantIndex = getSelectedVariantIndex(selectedItem);
+    const subVariantIndex = getSelectedSubVariantIndex(selectedItem);
     if (lazyLoad) {
       setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
     } else {
@@ -1047,7 +1059,24 @@ const getSelectedSubVariantIndex = (item) => {
   return item.selectedSubVariantIndex;
 };
 
-const getPreviewHexId = (item) => item.previewHexId || item.hexId;
+const getSelectedNameVariantItem = (item) => {
+  if (!item || !Array.isArray(item.nameVariantOptions) || item.nameVariantOptions.length === 0) {
+    return item;
+  }
+  const selectedHexId = item.selectedNameVariantHexId;
+  if (selectedHexId) {
+    const selectedOption = item.nameVariantOptions.find((option) => option.item.hexId === selectedHexId);
+    if (selectedOption) {
+      return selectedOption.item;
+    }
+  }
+  return item.nameVariantOptions[0].item;
+};
+
+const getPreviewHexId = (item) => {
+  const selectedItem = getSelectedNameVariantItem(item);
+  return selectedItem.previewHexId || selectedItem.hexId;
+};
 
 const getVariantMetaLabel = (item) => {
   const variantIndex = getSelectedVariantIndex(item);
@@ -1104,11 +1133,54 @@ const buildVariantPicker = (item) => {
       : [];
   const hasPrimaryPicker = primaryVariants.length > 1;
   const hasSubPicker = subVariants.length > 1;
-  if (!hasPrimaryPicker && !hasSubPicker) {
+  const hasNamePicker = Array.isArray(item.nameVariantOptions) && item.nameVariantOptions.length > 1;
+  if (!hasPrimaryPicker && !hasSubPicker && !hasNamePicker) {
     return null;
   }
   const container = document.createElement("div");
   container.className = "variant-picker";
+
+  if (hasNamePicker) {
+    const selectedNameVariant = getSelectedNameVariantItem(item);
+    const nameRow = document.createElement("div");
+    nameRow.className = "variant-picker-row";
+
+    item.nameVariantOptions.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "variant-option";
+      if (option.item.hexId === selectedNameVariant.hexId) {
+        button.classList.add("is-selected");
+      }
+      button.setAttribute("aria-label", `${item.name} (${option.label})`);
+
+      const image = document.createElement("img");
+      image.className = "variant-sprite";
+      image.alt = `${item.name} (${option.label})`;
+      const optionVariantIndex = getSelectedVariantIndex(option.item);
+      const optionSubVariantIndex = getSelectedSubVariantIndex(option.item);
+      assignSprite(image, option.item.hexId, optionVariantIndex, optionSubVariantIndex);
+
+      button.appendChild(image);
+      button.addEventListener("click", () => {
+        item.selectedNameVariantHexId = option.item.hexId;
+        updateCatalogCard(item);
+      });
+
+      nameRow.appendChild(button);
+    });
+
+    const addAllNameVariantsButton = document.createElement("button");
+    addAllNameVariantsButton.type = "button";
+    addAllNameVariantsButton.className = "variant-option variant-add-all";
+    addAllNameVariantsButton.textContent = "+";
+    addAllNameVariantsButton.setAttribute("aria-label", "Add all search name variants to order");
+    addAllNameVariantsButton.disabled = false;
+    addAllNameVariantsButton.addEventListener("click", () => addAllVariantsToOrder(item));
+    nameRow.appendChild(addAllNameVariantsButton);
+
+    container.appendChild(nameRow);
+  }
 
   if (hasPrimaryPicker) {
     const primaryRow = buildVariantRow({
@@ -1255,18 +1327,20 @@ const applySort = (items) => {
 };
 
 const getOrderItemCount = (item) => {
-  const variantIndex = getSelectedVariantIndex(item);
-  const orderId = buildOrderId(item.hexId, variantIndex);
+  const selectedItem = getSelectedNameVariantItem(item);
+  const variantIndex = getSelectedVariantIndex(selectedItem);
+  const orderId = buildOrderId(selectedItem.hexId, variantIndex);
   return orderItems.filter((orderItem) => orderItem.orderId === orderId).length;
 };
 
 const getSavedOrderItemCount = (item) => {
-  const variantIndex = getSelectedVariantIndex(item);
-  const orderId = buildOrderId(item.hexId, variantIndex);
+  const selectedItem = getSelectedNameVariantItem(item);
+  const variantIndex = getSelectedVariantIndex(selectedItem);
+  const orderId = buildOrderId(selectedItem.hexId, variantIndex);
   return savedOrders.reduce((total, order) => {
     const matchCount = (order.items || []).filter((orderItem) => {
       if (orderItem.hexId) {
-        return orderItem.hexId === item.hexId;
+        return orderItem.hexId === selectedItem.hexId;
       }
       return orderItem.orderId === orderId;
     }).length;
@@ -1321,6 +1395,9 @@ const renderCatalog = () => {
     const card = document.createElement("article");
     card.className = "catalog-card";
     card.dataset.hexId = item.hexId;
+    if (item.nameVariantGroupKey) {
+      card.dataset.nameVariantGroupKey = item.nameVariantGroupKey;
+    }
     if (!usePreviews) {
       card.classList.add("condensed-card");
     }
@@ -1331,22 +1408,24 @@ const renderCatalog = () => {
     let meta;
     if (usePreviews) {
       title = document.createElement("h3");
-      title.textContent = item.name;
+      title.textContent = getDisplayItemName(item);
 
       meta = document.createElement("div");
       meta.className = "catalog-meta";
-	  var variantLabel = getVariantMetaLabel(item);
-	  
-	  if (variantLabel === null) {
-      meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel}`;
-	  }
-	  else {
-      meta.textContent = getOrderItemMetaText(item);
-	  }
+      const selectedNameVariantLabel = getSelectedNameVariantLabel(item);
+      const variantLabel = getVariantMetaLabel(getSelectedNameVariantItem(item));
+      if (variantLabel === null && !selectedNameVariantLabel) {
+        meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel}`;
+      } else {
+        const variantText = selectedNameVariantLabel
+          ? selectedNameVariantLabel
+          : getVariantMetaLabel(getSelectedNameVariantItem(item));
+        meta.textContent = `${getCategoryLabel(item)} · ${item.kindLabel} · ${variantText}`;
+      }
     } else {
       title = document.createElement("div");
       title.className = "catalog-name-box";
-      title.textContent = item.name;
+      title.textContent = getDisplayItemName(item);
     }
 
     const button = document.createElement("button");
@@ -1409,16 +1488,21 @@ const renderCatalog = () => {
 };
 
 const updateCatalogCard = (item) => {
-  const card = catalogList.querySelector(`[data-hex-id="${item.hexId}"]`);
+  let card = catalogList.querySelector(`[data-hex-id="${item.hexId}"]`);
+  if (!card && item.nameVariantGroupKey) {
+    const escapedGroup = window.CSS && window.CSS.escape ? window.CSS.escape(item.nameVariantGroupKey) : item.nameVariantGroupKey;
+    card = catalogList.querySelector(`[data-name-variant-group-key="${escapedGroup}"]`);
+  }
   if (!card) {
     return;
   }
 
   const image = card.querySelector(".item-sprite");
   if (image) {
+    const selectedItem = getSelectedNameVariantItem(item);
     const hexId = getPreviewHexId(item);
-    const variantIndex = getSelectedVariantIndex(item);
-    const subVariantIndex = getSelectedSubVariantIndex(item);
+    const variantIndex = getSelectedVariantIndex(selectedItem);
+    const subVariantIndex = getSelectedSubVariantIndex(selectedItem);
     if (image.dataset.lazyPreview === "true") {
       if (image.dataset.previewLoaded !== "true") {
         setLazyPreviewData(image, hexId, variantIndex, subVariantIndex);
@@ -1434,13 +1518,20 @@ const updateCatalogCard = (item) => {
     }
   }
 
+  const title = card.querySelector("h3, .catalog-name-box");
+  if (title) {
+    title.textContent = getDisplayItemName(item);
+  }
+
   const meta = card.querySelector(".catalog-meta");
   if (meta) {
-    const variantLabel = getVariantMetaLabel(item);
-    meta.textContent =
-      variantLabel === null
-        ? `${getCategoryLabel(item)} · ${item.kindLabel}`
-        : `${getCategoryLabel(item)} · ${item.kindLabel} · ${variantLabel}`;
+    const selectedItem = getSelectedNameVariantItem(item);
+    const selectedNameVariantLabel = getSelectedNameVariantLabel(item);
+    const variantLabel = getVariantMetaLabel(selectedItem);
+    const combinedLabel = selectedNameVariantLabel || variantLabel;
+    meta.textContent = combinedLabel
+      ? `${getCategoryLabel(item)} · ${item.kindLabel} · ${combinedLabel}`
+      : `${getCategoryLabel(item)} · ${item.kindLabel}`;
   }
 
   const existingPicker = card.querySelector(".variant-picker");
@@ -2004,8 +2095,9 @@ const refreshCatalogOrderStateForItems = (items) => {
     if (!item || !item.hexId) {
       return;
     }
-    if (!uniqueItems.has(item.hexId)) {
-      uniqueItems.set(item.hexId, item);
+    const key = item.nameVariantGroupKey || item.hexId;
+    if (!uniqueItems.has(key)) {
+      uniqueItems.set(key, item);
     }
   });
   if (uniqueItems.size >= filteredItems.length) {
@@ -2052,12 +2144,23 @@ const addOrderEntries = (entries) => {
 };
 
 const addToOrder = (item) => {
-  const variantIndex = getSelectedVariantIndex(item);
-  const subVariantIndex = getSelectedSubVariantIndex(item);
-  addOrderEntries([createOrderEntry(item, variantIndex, subVariantIndex)]);
+  const selectedItem = getSelectedNameVariantItem(item);
+  const variantIndex = getSelectedVariantIndex(selectedItem);
+  const subVariantIndex = getSelectedSubVariantIndex(selectedItem);
+  addOrderEntries([createOrderEntry(selectedItem, variantIndex, subVariantIndex)]);
 };
 
 const addAllVariantsToOrder = (item) => {
+  if (Array.isArray(item.nameVariantOptions) && item.nameVariantOptions.length > 1) {
+    const entries = item.nameVariantOptions.map((option) => {
+      const selectedOptionItem = option.item;
+      const variantIndex = getSelectedVariantIndex(selectedOptionItem);
+      const subVariantIndex = getSelectedSubVariantIndex(selectedOptionItem);
+      return createOrderEntry(selectedOptionItem, variantIndex, subVariantIndex);
+    });
+    addOrderEntries(entries);
+    return;
+  }
   if (!item.variants || item.variants.length <= 1) {
     return;
   }
@@ -2074,8 +2177,9 @@ const addAllVariantsToOrder = (item) => {
 };
 
 const removeOneFromOrder = (item) => {
-  const variantIndex = getSelectedVariantIndex(item);
-  const orderId = buildOrderId(item.hexId, variantIndex);
+  const selectedItem = getSelectedNameVariantItem(item);
+  const variantIndex = getSelectedVariantIndex(selectedItem);
+  const orderId = buildOrderId(selectedItem.hexId, variantIndex);
   const index = orderItems.findIndex((orderItem) => orderItem.orderId === orderId);
   if (index === -1) {
     return;
@@ -2092,11 +2196,89 @@ const addItemsToOrder = (items) => {
     return;
   }
   const entries = items.map((item) => {
-    const variantIndex = getSelectedVariantIndex(item);
-    const subVariantIndex = getSelectedSubVariantIndex(item);
-    return createOrderEntry(item, variantIndex, subVariantIndex);
+    const selectedItem = getSelectedNameVariantItem(item);
+    const variantIndex = getSelectedVariantIndex(selectedItem);
+    const subVariantIndex = getSelectedSubVariantIndex(selectedItem);
+    return createOrderEntry(selectedItem, variantIndex, subVariantIndex);
   });
   addOrderEntries(entries);
+};
+
+const ITEM_NAME_VARIANT_PATTERN = /^(.*?)\s*\(([^()]+)\)\s*$/;
+
+const parseItemNameVariant = (name) => {
+  if (!name) {
+    return null;
+  }
+  const match = name.match(ITEM_NAME_VARIANT_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const baseName = match[1].trim();
+  const variantLabel = match[2].trim();
+  if (!baseName || !variantLabel) {
+    return null;
+  }
+  return { baseName, variantLabel };
+};
+
+const assignNameVariantGroups = (items) => {
+  const groups = new Map();
+  items.forEach((item) => {
+    const parsed = parseItemNameVariant(item.name);
+    if (!parsed) {
+      return;
+    }
+    const key = `${parsed.baseName.toLowerCase()}::${item.superCategory}::${item.subCategory || ""}::${item.kindLabel}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push({ item, ...parsed, key });
+  });
+
+  groups.forEach((entries, key) => {
+    if (entries.length <= 1) {
+      return;
+    }
+    entries.sort((a, b) => a.variantLabel.localeCompare(b.variantLabel));
+    const options = entries.map((entry) => ({
+      label: entry.variantLabel,
+      item: entry.item,
+      name: entry.item.name,
+    }));
+    const anchor = entries[0].item;
+    anchor.nameVariantGroupKey = key;
+    anchor.nameVariantBaseName = entries[0].baseName;
+    anchor.nameVariantOptions = options;
+    anchor.selectedNameVariantHexId = options[0].item.hexId;
+    anchor.nameVariantSearchText = options
+      .map((option) => `${option.name} ${option.label}`)
+      .join(" ")
+      .toLowerCase();
+    entries.forEach((entry) => {
+      entry.item.nameVariantGroupKey = key;
+      entry.item.nameVariantAnchorHexId = anchor.hexId;
+      entry.item.nameVariantAnchor = anchor;
+      entry.item.nameVariantSearchText = anchor.nameVariantSearchText;
+    });
+  });
+};
+
+const collapseNameVariantResults = (items) => {
+  const seenGroups = new Set();
+  const collapsed = [];
+  items.forEach((item) => {
+    if (!item.nameVariantGroupKey) {
+      collapsed.push(item);
+      return;
+    }
+    if (seenGroups.has(item.nameVariantGroupKey)) {
+      return;
+    }
+    seenGroups.add(item.nameVariantGroupKey);
+    collapsed.push(item.nameVariantAnchor || item);
+  });
+  return collapsed;
 };
 
 const getFlowerCatalogItems = () =>
@@ -2449,12 +2631,15 @@ const filterCatalog = () => {
 
   filteredItems = baseItems.filter((item) => {
     const matchesCategory = matchesCategoryFilter(item);
-    const searchable =
-      `${item.name} ${item.superCategory} ${item.subCategory || ""} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
+    const searchable = `${
+      item.nameVariantSearchText || item.name
+    } ${item.superCategory} ${item.subCategory || ""} ${item.kindLabel} ${getVariantMetaLabel(item)}`.toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     const matchesUnsafe = showUnsafeItems || !item.isUnsafe;
     return matchesCategory && matchesQuery && matchesUnsafe;
   });
+
+  filteredItems = collapseNameVariantResults(filteredItems);
 
   filteredItems = applySort(filteredItems);
   lastSearchQuery = query;
@@ -2708,7 +2893,7 @@ const loadCatalogItems = async () => {
       : [...rawNames, ...Array(kinds.length - rawNames.length).fill("")];
   const displayNames = buildDisplayNames(normalizedNames);
 
-  return displayNames.map((name, index) => {
+  const items = displayNames.map((name, index) => {
     const kindIndex = kinds[index];
     const rawKindName =
       kindIndex !== undefined && ITEM_KIND_NAMES[kindIndex] ? ITEM_KIND_NAMES[kindIndex] : "Unknown";
@@ -2756,6 +2941,8 @@ const loadCatalogItems = async () => {
       selectedSubVariantIndex,
     };
   });
+  assignNameVariantGroups(items);
+  return items;
 };
 
 const init = async () => {
