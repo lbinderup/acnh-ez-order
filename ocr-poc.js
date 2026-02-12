@@ -1,5 +1,6 @@
 const TARGET_PHRASE = "amazing machine";
 const SCAN_INTERVAL_MS = 2200;
+const SCAN_SLICE_HEIGHT_RATIO = 0.18;
 
 const startButton = document.getElementById("start-ocr");
 const stopButton = document.getElementById("stop-ocr");
@@ -49,9 +50,14 @@ async function scanFrame() {
   scanInProgress = true;
 
   const ctx = canvasElement.getContext("2d", { willReadFrequently: true });
-  canvasElement.width = videoElement.videoWidth;
-  canvasElement.height = videoElement.videoHeight;
-  ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+  const sourceWidth = videoElement.videoWidth;
+  const sourceHeight = videoElement.videoHeight;
+  const sliceHeight = Math.max(1, Math.floor(sourceHeight * SCAN_SLICE_HEIGHT_RATIO));
+  const sliceTop = Math.floor((sourceHeight - sliceHeight) / 2);
+
+  canvasElement.width = sourceWidth;
+  canvasElement.height = sliceHeight;
+  ctx.drawImage(videoElement, 0, sliceTop, sourceWidth, sliceHeight, 0, 0, sourceWidth, sliceHeight);
 
   try {
     const result = await Tesseract.recognize(canvasElement, "eng");
