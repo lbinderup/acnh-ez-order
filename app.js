@@ -1785,24 +1785,11 @@ const renderOrderDrawer = () => {
     return;
   }
 
-  if (orderItems.length === 0) {
-    isOrderPopoverOpen = false;
-    if (orderFabArea) {
-      orderFabArea.hidden = true;
-    }
-    orderDrawer.classList.add("is-hidden");
-    orderDrawer.hidden = true;
-    if (orderDrawerList) {
-      orderDrawerList.innerHTML = "";
-    }
-    return;
-  }
-
   if (orderFabArea) {
     orderFabArea.hidden = false;
   }
 
-  orderDrawer.hidden = false;
+  orderDrawer.hidden = !isOrderPopoverOpen;
   orderDrawer.classList.toggle("is-hidden", !isOrderPopoverOpen);
 
   if (drawerSlotCount) {
@@ -1823,29 +1810,36 @@ const renderOrderDrawer = () => {
 
   if (orderDrawerList) {
     orderDrawerList.innerHTML = "";
-    orderItems.forEach((item, index) => {
-      const row = document.createElement("div");
-      row.className = "order-drawer-row";
+    if (orderItems.length === 0) {
+      const emptyState = document.createElement("p");
+      emptyState.className = "order-drawer-empty";
+      emptyState.textContent = "No items in your order yet.";
+      orderDrawerList.appendChild(emptyState);
+    } else {
+      orderItems.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "order-drawer-row";
 
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "order-drawer-remove";
-      removeButton.textContent = "×";
-      removeButton.setAttribute("aria-label", `Remove ${item.name} from order`);
-      removeButton.addEventListener("click", () => removeFromOrder(index));
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "order-drawer-remove";
+        removeButton.textContent = "×";
+        removeButton.setAttribute("aria-label", `Remove ${item.name} from order`);
+        removeButton.addEventListener("click", () => removeFromOrder(index));
 
-      const icon = document.createElement("img");
-      icon.className = "order-drawer-icon";
-      icon.alt = item.name;
-      assignSprite(icon, getPreviewHexId(item), getSelectedVariantIndex(item), getSelectedSubVariantIndex(item));
+        const icon = document.createElement("img");
+        icon.className = "order-drawer-icon";
+        icon.alt = item.name;
+        assignSprite(icon, getPreviewHexId(item), getSelectedVariantIndex(item), getSelectedSubVariantIndex(item));
 
-      const name = document.createElement("div");
-      name.className = "order-drawer-name";
-      name.textContent = formatFlowerGeneLabel(item.flowerGene) ? `${item.name} (${formatFlowerGeneLabel(item.flowerGene)})` : item.name;
+        const name = document.createElement("div");
+        name.className = "order-drawer-name";
+        name.textContent = formatFlowerGeneLabel(item.flowerGene) ? `${item.name} (${formatFlowerGeneLabel(item.flowerGene)})` : item.name;
 
-      row.append(removeButton, icon, name);
-      orderDrawerList.appendChild(row);
-    });
+        row.append(removeButton, icon, name);
+        orderDrawerList.appendChild(row);
+      });
+    }
   }
 
   if (drawerCopyButton) {
