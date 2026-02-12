@@ -77,7 +77,6 @@
     </main>
 
     <div id="order-fab-area" class="order-fab-area" hidden>
-      <div id="order-fab-notice" class="order-fab-notice" role="status" aria-live="polite" hidden>Starting New Order</div>
       <aside id="order-drawer" class="order-drawer" aria-live="polite" hidden>
         <div class="order-drawer-header">
           <div id="drawer-slot-count" class="order-drawer-slots">0/40 slots</div>
@@ -91,10 +90,13 @@
           </div>
         </div>
       </aside>
-      <button id="order-drawer-toggle" type="button" class="order-fab-toggle" aria-label="Open current order">
-        <span>Current order</span>
-        <span id="order-fab-count" class="order-fab-count">0/40</span>
-      </button>
+      <div class="order-fab-launcher">
+        <div id="order-fab-notice" class="order-fab-notice" role="status" aria-live="polite" hidden>Starting New Order</div>
+        <button id="order-drawer-toggle" type="button" class="order-fab-toggle" aria-label="Open current order">
+          <span>Current order</span>
+          <span id="order-fab-count" class="order-fab-count">0/40</span>
+        </button>
+      </div>
     </div>
 
     <div id="flower-generator-modal" class="modal" hidden>
