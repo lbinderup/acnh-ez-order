@@ -1,6 +1,48 @@
-const TARGET_PHRASE = "amazing machine";
 const SCAN_INTERVAL_MS = 2200;
 const SCAN_SLICE_HEIGHT_RATIO = 0.18;
+const ACTIVE_LOOKAHEAD_COUNT = 14;
+
+const AUTHORITATIVE_ITEMS = [
+  "Amazing machine",
+  "Anthurium plant",
+  "Arcade combat game",
+  "Book stands",
+  "Candy machine",
+  "Cat grass",
+  "Coffee cup",
+  "Desktop computer",
+  "Digital alarm clock",
+  "Double sofa",
+  "Fan palm",
+  "Floor light",
+  "Fragrance diffuser",
+  "Garden lantern",
+  "Handcart",
+  "Ironwood dresser",
+  "Knife block",
+  "Menu chalkboard",
+  "Microwave",
+  "Monstera",
+  "Mug",
+  "Paper lantern",
+  "Pet bed",
+  "Portable record player",
+  "Rattan low table",
+  "Refrigerator",
+  "Rice cooker",
+  "Simple panel",
+  "Stand mixer",
+  "Table setting",
+  "Tea set",
+  "Throwback race-car bed",
+  "Toaster",
+  "Tool cart",
+  "Traditional tea set",
+  "Wall-mounted TV (50 in.)",
+  "Water cooler",
+  "Wood-burning stove",
+  "Yucca",
+].sort((a, b) => a.localeCompare(b));
 
 const startButton = document.getElementById("start-ocr");
 const stopButton = document.getElementById("stop-ocr");
@@ -8,10 +50,25 @@ const statusElement = document.getElementById("ocr-status");
 const logElement = document.getElementById("ocr-log");
 const videoElement = document.getElementById("ocr-video");
 const canvasElement = document.getElementById("ocr-canvas");
+const checklistElement = document.getElementById("ocr-checklist");
+const progressElement = document.getElementById("ocr-progress");
+const windowElement = document.getElementById("ocr-window");
 
 let cameraStream = null;
 let scanIntervalId = null;
 let scanInProgress = false;
+
+const normalizedItems = AUTHORITATIVE_ITEMS.map((name, index) => ({
+  index,
+  name,
+  normalized: normalizeText(name),
+}));
+const checkedIndices = new Set();
+let alphabeticalCursor = 0;
+
+function normalizeText(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
 
 function setStatus(message, hasMatch = false) {
   statusElement.textContent = message;
@@ -22,6 +79,124 @@ function prependLogEntry(message) {
   const item = document.createElement("li");
   item.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
   logElement.prepend(item);
+}
+
+function renderChecklist() {
+  checklistElement.textContent = "";
+
+  for (const item of normalizedItems) {
+    const row = document.createElement("li");
+    const isChecked = checkedIndices.has(item.index);
+    row.className = "ocr-checklist-item";
+    row.classList.toggle("is-checked", isChecked);
+    row.classList.toggle("is-cursor", item.index === alphabeticalCursor);
+    row.textContent = `${isChecked ? "✅" : "⬜"} ${item.name}`;
+    checklistElement.append(row);
+  }
+
+  progressElement.textContent = `${checkedIndices.size}/${normalizedItems.length} checked`;
+
+  if (alphabeticalCursor >= normalizedItems.length) {
+    windowElement.textContent = "All items scanned.";
+    return;
+  }
+
+  const lastIndex = Math.min(normalizedItems.length - 1, alphabeticalCursor + ACTIVE_LOOKAHEAD_COUNT);
+  windowElement.textContent = `Active scan window: ${normalizedItems[alphabeticalCursor].name} → ${normalizedItems[lastIndex].name}`;
+}
+
+function updateAlphabeticalCursor() {
+  while (checkedIndices.has(alphabeticalCursor) && alphabeticalCursor < normalizedItems.length) {
+    alphabeticalCursor += 1;
+  }
+}
+
+function levenshteinDistance(a, b) {
+  if (a === b) {
+    return 0;
+  }
+
+  const prev = new Array(b.length + 1);
+  const next = new Array(b.length + 1);
+
+  for (let j = 0; j <= b.length; j += 1) {
+    prev[j] = j;
+  }
+
+  for (let i = 1; i <= a.length; i += 1) {
+    next[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      next[j] = Math.min(next[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+
+    for (let j = 0; j <= b.length; j += 1) {
+      prev[j] = next[j];
+    }
+  }
+
+  return prev[b.length];
+}
+
+function isCloseMatch(candidate, target) {
+  if (!candidate || !target) {
+    return false;
+  }
+
+  if (candidate.includes(target) || target.includes(candidate)) {
+    return true;
+  }
+
+  const distance = levenshteinDistance(candidate, target);
+  const maxAllowedDistance = Math.max(1, Math.floor(target.length * 0.15));
+  return distance <= maxAllowedDistance;
+}
+
+function extractCandidatePhrases(rawText) {
+  const candidates = new Set();
+  const lines = rawText.split(/\n+/);
+
+  for (const line of lines) {
+    const normalizedLine = normalizeText(line);
+    if (!normalizedLine) {
+      continue;
+    }
+
+    candidates.add(normalizedLine);
+
+    const words = normalizedLine.split(" ").filter(Boolean);
+    for (let start = 0; start < words.length; start += 1) {
+      for (let length = 2; length <= 5 && start + length <= words.length; length += 1) {
+        candidates.add(words.slice(start, start + length).join(" "));
+      }
+    }
+  }
+
+  return [...candidates];
+}
+
+function findMatchingItem(rawText) {
+  const candidates = extractCandidatePhrases(rawText);
+  if (!candidates.length || alphabeticalCursor >= normalizedItems.length) {
+    return null;
+  }
+
+  const endIndex = Math.min(normalizedItems.length - 1, alphabeticalCursor + ACTIVE_LOOKAHEAD_COUNT);
+
+  for (let i = alphabeticalCursor; i <= endIndex; i += 1) {
+    if (checkedIndices.has(i)) {
+      continue;
+    }
+
+    const item = normalizedItems[i];
+    for (const candidate of candidates) {
+      if (isCloseMatch(candidate, item.normalized)) {
+        return item;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function startCamera() {
@@ -62,15 +237,22 @@ async function scanFrame() {
   try {
     const result = await Tesseract.recognize(canvasElement, "eng");
     const rawText = result.data.text || "";
-    const normalized = rawText.toLowerCase().replace(/\s+/g, " ").trim();
-    const hasMatch = normalized.includes(TARGET_PHRASE);
+    const match = findMatchingItem(rawText);
 
-    if (hasMatch) {
-      setStatus('✅ Found "Amazing machine" in camera feed.', true);
-      prependLogEntry('Match found for "Amazing machine".');
+    if (match) {
+      checkedIndices.add(match.index);
+      updateAlphabeticalCursor();
+      renderChecklist();
+      setStatus(`✅ Matched catalog item: ${match.name}`, true);
+      prependLogEntry(`Marked collected: ${match.name}`);
     } else {
-      setStatus('Scanning... phrase not found yet.');
-      prependLogEntry("No match in this frame.");
+      setStatus("Scanning active alphabetical window... no new matches yet.");
+      prependLogEntry("No new item match in this frame.");
+    }
+
+    if (alphabeticalCursor >= normalizedItems.length) {
+      setStatus("✅ All authoritative items are checked.", true);
+      stopScan();
     }
   } catch (error) {
     setStatus(`OCR error: ${error.message}`);
@@ -98,7 +280,12 @@ function stopScan() {
 
   startButton.disabled = false;
   stopButton.disabled = true;
-  setStatus("Stopped.");
+
+  if (alphabeticalCursor >= normalizedItems.length) {
+    setStatus("✅ Complete. All authoritative items checked.", true);
+  } else {
+    setStatus("Stopped.");
+  }
 }
 
 async function startScan() {
@@ -108,7 +295,7 @@ async function startScan() {
 
   try {
     await startCamera();
-    setStatus("Camera active. Scanning every ~2 seconds...");
+    setStatus("Camera active. Scanning active alphabetical window...");
     await scanFrame();
     scanIntervalId = setInterval(scanFrame, SCAN_INTERVAL_MS);
   } catch (error) {
@@ -118,6 +305,7 @@ async function startScan() {
   }
 }
 
+renderChecklist();
 startButton.addEventListener("click", startScan);
 stopButton.addEventListener("click", stopScan);
 window.addEventListener("beforeunload", stopScan);
