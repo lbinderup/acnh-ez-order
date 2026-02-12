@@ -42,6 +42,8 @@ const flowerGeneS1 = document.getElementById("flower-gene-s1");
 const flowerGeneS2 = document.getElementById("flower-gene-s2");
 let categoryDropdownListenerBound = false;
 let isOrderPopoverOpen = false;
+let newOrderToastTimeoutId = null;
+let isAutoStartingNewOrder = false;
 
 const MAX_SLOTS = 40;
 const FLOWER_GENE_FLAGS = {
@@ -1789,6 +1791,10 @@ const renderOrderDrawer = () => {
     orderFabArea.hidden = false;
   }
 
+  if (!isAutoStartingNewOrder) {
+    hideNewOrderToast();
+  }
+
   orderDrawer.hidden = !isOrderPopoverOpen;
   orderDrawer.classList.toggle("is-hidden", !isOrderPopoverOpen);
 
@@ -1985,18 +1991,36 @@ const updateCopyButtonFeedback = (button) => {
   }, 1500);
 };
 
+const hideNewOrderToast = () => {
+  if (!orderFabNotice) {
+    return;
+  }
+  if (newOrderToastTimeoutId !== null) {
+    window.clearTimeout(newOrderToastTimeoutId);
+    newOrderToastTimeoutId = null;
+  }
+  isAutoStartingNewOrder = false;
+  orderFabNotice.hidden = true;
+  orderFabNotice.classList.remove("is-animating");
+};
+
 const showNewOrderToast = () => {
   if (!orderFabArea || !orderFabNotice) {
     return;
   }
+
+  isAutoStartingNewOrder = true;
   orderFabArea.hidden = false;
   orderFabNotice.hidden = false;
   orderFabNotice.classList.remove("is-animating");
   void orderFabNotice.offsetWidth;
   orderFabNotice.classList.add("is-animating");
-  window.setTimeout(() => {
-    orderFabNotice.hidden = true;
-    orderFabNotice.classList.remove("is-animating");
+
+  if (newOrderToastTimeoutId !== null) {
+    window.clearTimeout(newOrderToastTimeoutId);
+  }
+  newOrderToastTimeoutId = window.setTimeout(() => {
+    hideNewOrderToast();
   }, 2200);
 };
 
