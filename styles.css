@@ -592,6 +592,12 @@ button.is-copied {
   pointer-events: none;
 }
 
+.order-fab-launcher {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .order-fab-notice {
   padding: 0.5rem 0.8rem;
   background: linear-gradient(135deg, #f97316, #ec4899);
@@ -601,7 +607,7 @@ button.is-copied {
   font-size: 0.82rem;
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.2);
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateX(8px);
   pointer-events: none;
 }
 
@@ -634,19 +640,19 @@ button.is-copied {
 @keyframes order-fab-notice-pop {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateX(8px);
   }
   15% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
   85% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
   100% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateX(8px);
   }
 }
 
