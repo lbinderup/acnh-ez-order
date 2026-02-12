@@ -1304,6 +1304,7 @@ const matchesCategoryFilter = (item) => {
 
 const applySort = (items) => {
   const sorted = [...items];
+  const getSortName = (item) => item.nameVariantBaseName || item.name;
   if (sortMode === "category") {
     sorted.sort((a, b) => {
       const superCompare = a.superCategory.localeCompare(b.superCategory);
@@ -1318,11 +1319,11 @@ const applySort = (items) => {
       if (kindCompare !== 0) {
         return kindCompare;
       }
-      return a.name.localeCompare(b.name);
+      return getSortName(a).localeCompare(getSortName(b));
     });
     return sorted;
   }
-  sorted.sort((a, b) => a.name.localeCompare(b.name));
+  sorted.sort((a, b) => getSortName(a).localeCompare(getSortName(b)));
   return sorted;
 };
 
@@ -2095,9 +2096,10 @@ const refreshCatalogOrderStateForItems = (items) => {
     if (!item || !item.hexId) {
       return;
     }
-    const key = item.nameVariantGroupKey || item.hexId;
+    const anchorItem = item.nameVariantAnchor || item;
+    const key = anchorItem.nameVariantGroupKey || anchorItem.hexId;
     if (!uniqueItems.has(key)) {
-      uniqueItems.set(key, item);
+      uniqueItems.set(key, anchorItem);
     }
   });
   if (uniqueItems.size >= filteredItems.length) {
