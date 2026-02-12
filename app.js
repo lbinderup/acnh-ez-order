@@ -9,12 +9,15 @@ const copyOrderButton = document.getElementById("copy-order");
 const pasteOrderButton = document.getElementById("paste-order");
 const slotCount = document.getElementById("slot-count");
 const orderDrawer = document.getElementById("order-drawer");
+const orderFabArea = document.getElementById("order-fab-area");
+const orderFabNotice = document.getElementById("order-fab-notice");
 const drawerSlotCount = document.getElementById("drawer-slot-count");
 const orderDrawerList = document.getElementById("order-drawer-list");
 const drawerClearButton = document.getElementById("drawer-clear");
 const drawerSaveButton = document.getElementById("drawer-save");
 const drawerCopyButton = document.getElementById("drawer-copy");
 const orderDrawerToggle = document.getElementById("order-drawer-toggle");
+const orderFabCount = document.getElementById("order-fab-count");
 const unsafeToggle = document.getElementById("unsafe-toggle");
 const sortSelect = document.getElementById("sort-select");
 const addAllButton = document.getElementById("add-all");
@@ -38,7 +41,7 @@ const flowerGeneW2 = document.getElementById("flower-gene-w2");
 const flowerGeneS1 = document.getElementById("flower-gene-s1");
 const flowerGeneS2 = document.getElementById("flower-gene-s2");
 let categoryDropdownListenerBound = false;
-let isDrawerCollapsed = false;
+let isOrderPopoverOpen = false;
 
 const MAX_SLOTS = 40;
 const FLOWER_GENE_FLAGS = {
@@ -1783,7 +1786,10 @@ const renderOrderDrawer = () => {
   }
 
   if (orderItems.length === 0) {
-    isDrawerCollapsed = false;
+    isOrderPopoverOpen = false;
+    if (orderFabArea) {
+      orderFabArea.hidden = true;
+    }
     orderDrawer.classList.add("is-hidden");
     orderDrawer.hidden = true;
     if (orderDrawerList) {
@@ -1792,19 +1798,26 @@ const renderOrderDrawer = () => {
     return;
   }
 
+  if (orderFabArea) {
+    orderFabArea.hidden = false;
+  }
+
   orderDrawer.hidden = false;
-  orderDrawer.classList.remove("is-hidden");
-  orderDrawer.classList.toggle("is-collapsed", isDrawerCollapsed);
+  orderDrawer.classList.toggle("is-hidden", !isOrderPopoverOpen);
 
   if (drawerSlotCount) {
     drawerSlotCount.textContent = `${orderItems.length}/${MAX_SLOTS} slots`;
   }
 
+  if (orderFabCount) {
+    orderFabCount.textContent = `${orderItems.length}/${MAX_SLOTS}`;
+  }
+
   if (orderDrawerToggle) {
-    orderDrawerToggle.textContent = isDrawerCollapsed ? "❯" : "❮";
+    orderDrawerToggle.classList.toggle("is-open", isOrderPopoverOpen);
     orderDrawerToggle.setAttribute(
       "aria-label",
-      isDrawerCollapsed ? "Expand order drawer" : "Collapse order drawer"
+      isOrderPopoverOpen ? "Close current order" : "Open current order"
     );
   }
 
@@ -1979,19 +1992,17 @@ const updateCopyButtonFeedback = (button) => {
 };
 
 const showNewOrderToast = () => {
-  const existingToast = document.querySelector(".order-toast");
-  if (existingToast) {
-    existingToast.remove();
+  if (!orderFabArea || !orderFabNotice) {
+    return;
   }
-  const toast = document.createElement("div");
-  toast.className = "order-toast";
-  toast.textContent = "Starting New Order";
-  document.body.appendChild(toast);
+  orderFabArea.hidden = false;
+  orderFabNotice.hidden = false;
+  orderFabNotice.classList.remove("is-animating");
+  void orderFabNotice.offsetWidth;
+  orderFabNotice.classList.add("is-animating");
   window.setTimeout(() => {
-    toast.classList.add("is-hidden");
-  }, 1500);
-  window.setTimeout(() => {
-    toast.remove();
+    orderFabNotice.hidden = true;
+    orderFabNotice.classList.remove("is-animating");
   }, 2200);
 };
 
@@ -3034,7 +3045,7 @@ if (drawerCopyButton) {
 
 if (orderDrawerToggle) {
   orderDrawerToggle.addEventListener("click", () => {
-    isDrawerCollapsed = !isDrawerCollapsed;
+    isOrderPopoverOpen = !isOrderPopoverOpen;
     renderOrderDrawer();
   });
 }
