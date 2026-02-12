@@ -964,6 +964,50 @@ footer {
   background: #111;
 }
 
+.ocr-video-wrap {
+  position: relative;
+}
+
+.ocr-roi {
+  position: absolute;
+  left: 8%;
+  width: 84%;
+  top: 37%;
+  height: 26%;
+  border: 2px solid #1fdd8d;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.4);
+  pointer-events: none;
+}
+
+.ocr-controls-panel {
+  margin: 0.9rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ocr-controls-panel legend {
+  color: var(--muted);
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+
+.ocr-controls-panel label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.ocr-controls-panel input[type="range"] {
+  width: min(240px, 100%);
+}
+
 .ocr-status {
   font-weight: 700;
   color: var(--muted);
