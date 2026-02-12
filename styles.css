@@ -955,7 +955,10 @@ footer {
 }
 
 #ocr-video {
-  width: min(100%, 460px);
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: #111;
@@ -968,6 +971,33 @@ footer {
 
 .ocr-status.match {
   color: #1b8a2f;
+}
+
+
+.ocr-meta {
+  margin: 0.3rem 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ocr-checklist {
+  margin: 0.9rem 0 0;
+  padding-left: 1.1rem;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.ocr-checklist-item {
+  color: var(--text);
+  margin: 0.2rem 0;
+}
+
+.ocr-checklist-item.is-checked {
+  color: #1b8a2f;
+}
+
+.ocr-checklist-item.is-cursor {
+  font-weight: 700;
 }
 
 .ocr-log {

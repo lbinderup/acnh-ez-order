@@ -24,8 +24,9 @@
           <h2>Camera OCR Proof of Concept</h2>
         </div>
         <p>
-          Starts your device camera and periodically scans frames using Tesseract.js. This PoC looks for the exact phrase
-          <strong>"Amazing machine"</strong> in recognized text.
+          Starts your device camera and periodically scans a thin horizontal slice using Tesseract.js. Instead of looking
+          for one phrase, this PoC matches recognized text against an authoritative item list and progressively checks
+          items off.
         </p>
         <div class="ocr-controls">
           <button id="start-ocr" type="button">Start camera scan</button>
@@ -34,6 +35,15 @@
         </div>
         <video id="ocr-video" autoplay muted playsinline></video>
         <canvas id="ocr-canvas" hidden></canvas>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Checklist Sync</h2>
+        </div>
+        <p id="ocr-progress" class="ocr-meta">0/0 checked</p>
+        <p id="ocr-window" class="ocr-meta">Active scan window not started.</p>
+        <ol id="ocr-checklist" class="ocr-checklist"></ol>
       </section>
 
       <section class="panel">
