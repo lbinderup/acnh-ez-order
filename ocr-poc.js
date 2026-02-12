@@ -1,5 +1,6 @@
 const SCAN_INTERVAL_MS = 2200;
-const SCAN_SLICE_HEIGHT_RATIO = 0.18;
+const ROI_WIDTH_RATIO = 0.84;
+const ROI_HEIGHT_RATIO = 0.26;
 const ACTIVE_LOOKAHEAD_COUNT = 14;
 
 const AUTHORITATIVE_ITEMS = [
@@ -53,6 +54,11 @@ const canvasElement = document.getElementById("ocr-canvas");
 const checklistElement = document.getElementById("ocr-checklist");
 const progressElement = document.getElementById("ocr-progress");
 const windowElement = document.getElementById("ocr-window");
+const preprocessToggleElement = document.getElementById("ocr-preprocess");
+const contrastSliderElement = document.getElementById("ocr-contrast");
+const thresholdSliderElement = document.getElementById("ocr-threshold");
+const contrastValueElement = document.getElementById("ocr-contrast-value");
+const thresholdValueElement = document.getElementById("ocr-threshold-value");
 
 let cameraStream = null;
 let scanIntervalId = null;
@@ -199,6 +205,57 @@ function findMatchingItem(rawText) {
   return null;
 }
 
+function getPreprocessSettings() {
+  const contrast = Number.parseFloat(contrastSliderElement.value);
+  const threshold = Number.parseInt(thresholdSliderElement.value, 10);
+
+  return {
+    enabled: preprocessToggleElement.checked,
+    contrast: Number.isFinite(contrast) ? contrast : 1.8,
+    threshold: Number.isFinite(threshold) ? threshold : 145,
+  };
+}
+
+function updatePreprocessLabels() {
+  const { contrast, threshold } = getPreprocessSettings();
+  contrastValueElement.textContent = `${contrast.toFixed(1)}×`;
+  thresholdValueElement.textContent = `${threshold}`;
+}
+
+function getRoiRect(sourceWidth, sourceHeight) {
+  const roiWidth = Math.max(1, Math.floor(sourceWidth * ROI_WIDTH_RATIO));
+  const roiHeight = Math.max(1, Math.floor(sourceHeight * ROI_HEIGHT_RATIO));
+
+  return {
+    x: Math.floor((sourceWidth - roiWidth) / 2),
+    y: Math.floor((sourceHeight - roiHeight) / 2),
+    width: roiWidth,
+    height: roiHeight,
+  };
+}
+
+function preprocessCanvasPixels(ctx, width, height, settings) {
+  if (!settings.enabled) {
+    return;
+  }
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const grayscale = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+    const contrasted = (grayscale - 128) * settings.contrast + 128;
+    const binary = contrasted >= settings.threshold ? 255 : 0;
+
+    pixels[i] = binary;
+    pixels[i + 1] = binary;
+    pixels[i + 2] = binary;
+    pixels[i + 3] = 255;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Camera access is not supported on this browser.");
@@ -227,15 +284,30 @@ async function scanFrame() {
   const ctx = canvasElement.getContext("2d", { willReadFrequently: true });
   const sourceWidth = videoElement.videoWidth;
   const sourceHeight = videoElement.videoHeight;
-  const sliceHeight = Math.max(1, Math.floor(sourceHeight * SCAN_SLICE_HEIGHT_RATIO));
-  const sliceTop = Math.floor((sourceHeight - sliceHeight) / 2);
+  const roiRect = getRoiRect(sourceWidth, sourceHeight);
 
-  canvasElement.width = sourceWidth;
-  canvasElement.height = sliceHeight;
-  ctx.drawImage(videoElement, 0, sliceTop, sourceWidth, sliceHeight, 0, 0, sourceWidth, sliceHeight);
+  canvasElement.width = roiRect.width;
+  canvasElement.height = roiRect.height;
+  ctx.drawImage(
+    videoElement,
+    roiRect.x,
+    roiRect.y,
+    roiRect.width,
+    roiRect.height,
+    0,
+    0,
+    roiRect.width,
+    roiRect.height,
+  );
+
+  const preprocessSettings = getPreprocessSettings();
+  preprocessCanvasPixels(ctx, roiRect.width, roiRect.height, preprocessSettings);
 
   try {
-    const result = await Tesseract.recognize(canvasElement, "eng");
+    const result = await Tesseract.recognize(canvasElement, "eng", {
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+      preserve_interword_spaces: "1",
+    });
     const rawText = result.data.text || "";
     const match = findMatchingItem(rawText);
 
@@ -246,7 +318,7 @@ async function scanFrame() {
       setStatus(`✅ Matched catalog item: ${match.name}`, true);
       prependLogEntry(`Marked collected: ${match.name}`);
     } else {
-      setStatus("Scanning active alphabetical window... no new matches yet.");
+      setStatus("Scanning inside highlighted rectangle... no new matches yet.");
       prependLogEntry("No new item match in this frame.");
     }
 
@@ -295,7 +367,7 @@ async function startScan() {
 
   try {
     await startCamera();
-    setStatus("Camera active. Scanning active alphabetical window...");
+    setStatus("Camera active. Scanning inside highlighted rectangle...");
     await scanFrame();
     scanIntervalId = setInterval(scanFrame, SCAN_INTERVAL_MS);
   } catch (error) {
@@ -306,6 +378,9 @@ async function startScan() {
 }
 
 renderChecklist();
+updatePreprocessLabels();
 startButton.addEventListener("click", startScan);
 stopButton.addEventListener("click", stopScan);
+contrastSliderElement.addEventListener("input", updatePreprocessLabels);
+thresholdSliderElement.addEventListener("input", updatePreprocessLabels);
 window.addEventListener("beforeunload", stopScan);

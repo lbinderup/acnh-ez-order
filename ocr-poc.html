@@ -33,8 +33,28 @@
           <button id="stop-ocr" type="button" class="secondary" disabled>Stop</button>
           <span id="ocr-status" class="ocr-status">Idle.</span>
         </div>
-        <video id="ocr-video" autoplay muted playsinline></video>
+        <div class="ocr-video-wrap">
+          <video id="ocr-video" autoplay muted playsinline></video>
+          <div id="ocr-roi" class="ocr-roi" aria-hidden="true"></div>
+        </div>
         <canvas id="ocr-canvas" hidden></canvas>
+        <fieldset class="ocr-controls-panel">
+          <legend>Image preprocessing</legend>
+          <label>
+            <input id="ocr-preprocess" type="checkbox" checked />
+            Enable grayscale + contrast + threshold
+          </label>
+          <label>
+            Contrast
+            <input id="ocr-contrast" type="range" min="0.6" max="2.8" step="0.1" value="1.8" />
+            <span id="ocr-contrast-value">1.8×</span>
+          </label>
+          <label>
+            Threshold
+            <input id="ocr-threshold" type="range" min="80" max="220" step="5" value="145" />
+            <span id="ocr-threshold-value">145</span>
+          </label>
+        </fieldset>
       </section>
 
       <section class="panel">
