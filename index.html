@@ -76,22 +76,26 @@
       </section>
     </main>
 
-    <aside id="order-drawer" class="order-drawer" aria-live="polite" hidden>
-      <button id="order-drawer-toggle" type="button" class="order-drawer-toggle" aria-label="Collapse order drawer">
-        ❮
-      </button>
-      <div class="order-drawer-header">
-        <div id="drawer-slot-count" class="order-drawer-slots">0/40 slots</div>
-      </div>
-      <div class="order-drawer-body">
-        <div id="order-drawer-list" class="order-drawer-list"></div>
-        <div class="order-drawer-actions">
-          <button id="drawer-clear" type="button" class="secondary">Clear</button>
-          <button id="drawer-save" type="button">Save</button>
-          <button id="drawer-copy" type="button">Copy</button>
+    <div id="order-fab-area" class="order-fab-area" hidden>
+      <div id="order-fab-notice" class="order-fab-notice" role="status" aria-live="polite" hidden>Starting New Order</div>
+      <aside id="order-drawer" class="order-drawer" aria-live="polite" hidden>
+        <div class="order-drawer-header">
+          <div id="drawer-slot-count" class="order-drawer-slots">0/40 slots</div>
         </div>
-      </div>
-    </aside>
+        <div class="order-drawer-body">
+          <div id="order-drawer-list" class="order-drawer-list"></div>
+          <div class="order-drawer-actions">
+            <button id="drawer-clear" type="button" class="secondary">Clear</button>
+            <button id="drawer-save" type="button">Save</button>
+            <button id="drawer-copy" type="button">Copy</button>
+          </div>
+        </div>
+      </aside>
+      <button id="order-drawer-toggle" type="button" class="order-fab-toggle" aria-label="Open current order">
+        <span>Current order</span>
+        <span id="order-fab-count" class="order-fab-count">0/40</span>
+      </button>
+    </div>
 
     <div id="flower-generator-modal" class="modal" hidden>
       <div class="modal-backdrop" data-close-flower-modal="true"></div>
