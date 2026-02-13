@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACNH EZ Order · OCR Camera PoC (Google ML Kit)</title>
+    <title>ACNH EZ Order · OCR Camera PoC (Gutenye OCR)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,18 +16,17 @@
     <header class="app-nav">
       <a href="index.html">Catalog</a>
       <a href="ocr-poc.html">OCR PoC (Tesseract)</a>
-      <a href="mlkit-poc.html" aria-current="page">OCR PoC (Google ML Kit)</a>
+      <a href="mlkit-poc.html" aria-current="page">OCR PoC (Gutenye OCR)</a>
     </header>
 
     <main>
       <section class="panel">
         <div class="panel-header">
-          <h2>Camera OCR Proof of Concept · Google ML Kit</h2>
+          <h2>Camera OCR Proof of Concept · Gutenye OCR</h2>
         </div>
         <p>
-          Starts your device camera and scans a horizontal slice using the browser TextDetector API (on Android Chrome this
-          is typically backed by Google ML Kit). This is a second OCR PoC so you can compare detection quality vs.
-          Tesseract.
+          Starts your device camera and scans a horizontal slice with a Gutenye OCR runtime, so this flow is no longer
+          Android-only and can run anywhere Gutenye OCR is available.
         </p>
         <div class="ocr-controls">
           <button id="mlkit-start-ocr" type="button">Start camera scan</button>
@@ -58,6 +57,7 @@
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/gutenye-ocr/dist/gutenye-ocr.min.js"></script>
     <script src="mlkit-poc.js"></script>
   </body>
 </html>

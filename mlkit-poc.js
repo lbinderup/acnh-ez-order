@@ -59,7 +59,7 @@ let cameraStream = null;
 let scanIntervalId = null;
 let scanInProgress = false;
 let orientationChangeHandler = null;
-let textDetector = null;
+let gutenyeRecognizer = null;
 
 const normalizedItems = AUTHORITATIVE_ITEMS.map((name, index) => ({
   index,
@@ -251,16 +251,102 @@ function stopWatchingOrientationChanges() {
   orientationChangeHandler = null;
 }
 
-function getDetector() {
-  if (!textDetector) {
-    if (!("TextDetector" in window)) {
-      throw new Error("TextDetector is unavailable. Use Chrome on Android for ML Kit-backed text detection.");
-    }
-
-    textDetector = new window.TextDetector();
+function extractTextFromGutenyeResult(result) {
+  if (!result) {
+    return "";
   }
 
-  return textDetector;
+  if (typeof result === "string") {
+    return result;
+  }
+
+  if (Array.isArray(result)) {
+    return result
+      .map((entry) => extractTextFromGutenyeResult(entry))
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (typeof result === "object") {
+    if (typeof result.text === "string") {
+      return result.text;
+    }
+
+    if (typeof result.rawText === "string") {
+      return result.rawText;
+    }
+
+    if (Array.isArray(result.lines)) {
+      return result.lines
+        .map((line) => extractTextFromGutenyeResult(line))
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (Array.isArray(result.blocks)) {
+      return result.blocks
+        .map((block) => extractTextFromGutenyeResult(block))
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (Array.isArray(result.results)) {
+      return result.results
+        .map((entry) => extractTextFromGutenyeResult(entry))
+        .filter(Boolean)
+        .join("\n");
+    }
+  }
+
+  return "";
+}
+
+function resolveGutenyeRecognizer() {
+  const candidates = [
+    window.GutenyeOCR,
+    window.GutenyeOcr,
+    window.gutenyeOCR,
+    window.gutenyeOcr,
+    window.gutenye,
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (typeof candidate.recognize === "function") {
+      return async (source) => candidate.recognize(source);
+    }
+
+    if (typeof candidate.detect === "function") {
+      return async (source) => candidate.detect(source);
+    }
+
+    if (typeof candidate.scan === "function") {
+      return async (source) => candidate.scan(source);
+    }
+
+    if (typeof candidate.ocr === "function") {
+      return async (source) => candidate.ocr(source);
+    }
+  }
+
+  if (typeof window.gutenyeOcr === "function") {
+    return async (source) => window.gutenyeOcr(source);
+  }
+
+  return null;
+}
+
+function getRecognizer() {
+  if (!gutenyeRecognizer) {
+    gutenyeRecognizer = resolveGutenyeRecognizer();
+  }
+
+  if (!gutenyeRecognizer) {
+    throw new Error(
+      "Gutenye OCR runtime is unavailable. Load Gutenye OCR before starting a scan.",
+    );
+  }
+
+  return gutenyeRecognizer;
 }
 
 async function startCamera() {
@@ -312,12 +398,9 @@ async function scanFrame() {
   );
 
   try {
-    const detector = getDetector();
-    const blocks = await detector.detect(canvasElement);
-    const rawText = blocks
-      .map((block) => block.rawValue || block.text || "")
-      .filter(Boolean)
-      .join("\n");
+    const recognizer = getRecognizer();
+    const rawResult = await recognizer(canvasElement);
+    const rawText = extractTextFromGutenyeResult(rawResult);
 
     const match = findMatchingItem(rawText);
 
