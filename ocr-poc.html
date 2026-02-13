@@ -15,7 +15,8 @@
   <body>
     <header class="app-nav">
       <a href="index.html">Catalog</a>
-      <a href="ocr-poc.html" aria-current="page">OCR Camera PoC</a>
+      <a href="ocr-poc.html" aria-current="page">OCR PoC (Tesseract)</a>
+      <a href="mlkit-poc.html">OCR PoC (Google ML Kit)</a>
     </header>
 
     <main>
@@ -53,6 +54,15 @@
             Threshold
             <input id="ocr-threshold" type="range" min="80" max="220" step="5" value="145" />
             <span id="ocr-threshold-value">145</span>
+          </label>
+          <label>
+            Minimum confidence
+            <input id="ocr-min-confidence" type="range" min="0" max="95" step="1" value="62" />
+            <span id="ocr-min-confidence-value">62%</span>
+          </label>
+          <label>
+            <input id="ocr-debug-mode" type="checkbox" />
+            Verbose OCR debug (show confidence + candidates)
           </label>
         </fieldset>
       </section>

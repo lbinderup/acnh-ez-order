@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ACNH EZ Order · OCR Camera PoC (Google ML Kit)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-nav">
+      <a href="index.html">Catalog</a>
+      <a href="ocr-poc.html">OCR PoC (Tesseract)</a>
+      <a href="mlkit-poc.html" aria-current="page">OCR PoC (Google ML Kit)</a>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Camera OCR Proof of Concept · Google ML Kit</h2>
+        </div>
+        <p>
+          Starts your device camera and scans a horizontal slice using the browser TextDetector API (on Android Chrome this
+          is typically backed by Google ML Kit). This is a second OCR PoC so you can compare detection quality vs.
+          Tesseract.
+        </p>
+        <div class="ocr-controls">
+          <button id="mlkit-start-ocr" type="button">Start camera scan</button>
+          <button id="mlkit-stop-ocr" type="button" class="secondary" disabled>Stop</button>
+          <span id="mlkit-ocr-status" class="ocr-status">Idle.</span>
+        </div>
+        <div class="ocr-video-wrap">
+          <video id="mlkit-ocr-video" autoplay muted playsinline></video>
+          <div class="ocr-roi" aria-hidden="true"></div>
+        </div>
+        <canvas id="mlkit-ocr-canvas" hidden></canvas>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Checklist Sync</h2>
+        </div>
+        <p id="mlkit-ocr-progress" class="ocr-meta">0/0 checked</p>
+        <p id="mlkit-ocr-window" class="ocr-meta">Active scan window not started.</p>
+        <ol id="mlkit-ocr-checklist" class="ocr-checklist"></ol>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Recognition Log</h2>
+        </div>
+        <ol id="mlkit-ocr-log" class="ocr-log"></ol>
+      </section>
+    </main>
+
+    <script src="mlkit-poc.js"></script>
+  </body>
+</html>

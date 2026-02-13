@@ -1,4 +1,4 @@
-const SCAN_INTERVAL_MS = 2200;
+const SCAN_INTERVAL_MS = 1400;
 const ROI_WIDTH_RATIO = 0.84;
 const ROI_HEIGHT_RATIO = 0.26;
 const ACTIVE_LOOKAHEAD_COUNT = 14;
@@ -45,28 +45,21 @@ const AUTHORITATIVE_ITEMS = [
   "Yucca",
 ].sort((a, b) => a.localeCompare(b));
 
-const startButton = document.getElementById("start-ocr");
-const stopButton = document.getElementById("stop-ocr");
-const statusElement = document.getElementById("ocr-status");
-const logElement = document.getElementById("ocr-log");
-const videoElement = document.getElementById("ocr-video");
-const canvasElement = document.getElementById("ocr-canvas");
-const checklistElement = document.getElementById("ocr-checklist");
-const progressElement = document.getElementById("ocr-progress");
-const windowElement = document.getElementById("ocr-window");
-const preprocessToggleElement = document.getElementById("ocr-preprocess");
-const contrastSliderElement = document.getElementById("ocr-contrast");
-const thresholdSliderElement = document.getElementById("ocr-threshold");
-const minConfidenceSliderElement = document.getElementById("ocr-min-confidence");
-const debugModeToggleElement = document.getElementById("ocr-debug-mode");
-const contrastValueElement = document.getElementById("ocr-contrast-value");
-const thresholdValueElement = document.getElementById("ocr-threshold-value");
-const minConfidenceValueElement = document.getElementById("ocr-min-confidence-value");
+const startButton = document.getElementById("mlkit-start-ocr");
+const stopButton = document.getElementById("mlkit-stop-ocr");
+const statusElement = document.getElementById("mlkit-ocr-status");
+const logElement = document.getElementById("mlkit-ocr-log");
+const videoElement = document.getElementById("mlkit-ocr-video");
+const canvasElement = document.getElementById("mlkit-ocr-canvas");
+const checklistElement = document.getElementById("mlkit-ocr-checklist");
+const progressElement = document.getElementById("mlkit-ocr-progress");
+const windowElement = document.getElementById("mlkit-ocr-window");
 
 let cameraStream = null;
 let scanIntervalId = null;
 let scanInProgress = false;
 let orientationChangeHandler = null;
+let textDetector = null;
 
 const normalizedItems = AUTHORITATIVE_ITEMS.map((name, index) => ({
   index,
@@ -89,15 +82,6 @@ function prependLogEntry(message) {
   const item = document.createElement("li");
   item.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
   logElement.prepend(item);
-}
-
-function getMinConfidenceThreshold() {
-  const threshold = Number.parseInt(minConfidenceSliderElement.value, 10);
-  return Number.isFinite(threshold) ? threshold : 62;
-}
-
-function isDebugModeEnabled() {
-  return debugModeToggleElement.checked;
 }
 
 function renderChecklist() {
@@ -167,7 +151,7 @@ function isCloseMatch(candidate, target) {
   }
 
   const distance = levenshteinDistance(candidate, target);
-  const maxAllowedDistance = Math.max(1, Math.floor(target.length * 0.15));
+  const maxAllowedDistance = Math.max(1, Math.floor(target.length * 0.14));
   return distance <= maxAllowedDistance;
 }
 
@@ -194,51 +178,13 @@ function extractCandidatePhrases(rawText) {
   return [...candidates];
 }
 
-function extractCandidatePhrasesFromWords(words, minConfidence) {
-  const candidates = new Set();
-  const highConfidenceWords = (words || [])
-    .filter((word) => (word.confidence ?? 0) >= minConfidence)
-    .map((word) => normalizeText(word.text))
-    .filter(Boolean);
-
-  for (let start = 0; start < highConfidenceWords.length; start += 1) {
-    for (let length = 1; length <= 5 && start + length <= highConfidenceWords.length; length += 1) {
-      candidates.add(highConfidenceWords.slice(start, start + length).join(" "));
-    }
-  }
-
-  return [...candidates];
-}
-
-function scoreCandidateAgainstTarget(candidate, target) {
-  if (!candidate || !target) {
-    return 0;
-  }
-
-  if (candidate === target) {
-    return 1;
-  }
-
-  const distance = levenshteinDistance(candidate, target);
-  const maxLen = Math.max(candidate.length, target.length);
-  return Math.max(0, 1 - distance / Math.max(1, maxLen));
-}
-
-function findMatchingItem(result) {
-  const rawText = result.data.text || "";
-  const minConfidence = getMinConfidenceThreshold();
-  const rawTextCandidates = extractCandidatePhrases(rawText);
-  const wordCandidates = extractCandidatePhrasesFromWords(result.data.words || [], minConfidence);
-  const candidates = [...new Set([...wordCandidates, ...rawTextCandidates])];
-
+function findMatchingItem(rawText) {
+  const candidates = extractCandidatePhrases(rawText);
   if (!candidates.length || alphabeticalCursor >= normalizedItems.length) {
-    return { match: null, debug: { candidates: [], best: null, avgConfidence: 0 } };
+    return null;
   }
 
   const endIndex = Math.min(normalizedItems.length - 1, alphabeticalCursor + ACTIVE_LOOKAHEAD_COUNT);
-  const debugScored = [];
-  let best = null;
-
   for (let i = alphabeticalCursor; i <= endIndex; i += 1) {
     if (checkedIndices.has(i)) {
       continue;
@@ -246,75 +192,36 @@ function findMatchingItem(result) {
 
     const item = normalizedItems[i];
     for (const candidate of candidates) {
-      const similarity = scoreCandidateAgainstTarget(candidate, item.normalized);
-      const scored = { item, candidate, similarity };
-      debugScored.push(scored);
-
-      if (!best || similarity > best.similarity) {
-        best = scored;
-      }
-
-      if (isCloseMatch(candidate, item.normalized) && similarity >= 0.85) {
-        return {
-          match: item,
-          debug: {
-            candidates,
-            best: scored,
-            avgConfidence: getAverageWordConfidence(result.data.words || []),
-          },
-        };
+      if (isCloseMatch(candidate, item.normalized)) {
+        return item;
       }
     }
   }
 
-  return {
-    match: null,
-    debug: {
-      candidates,
-      best,
-      avgConfidence: getAverageWordConfidence(result.data.words || []),
-      topScored: debugScored.sort((a, b) => b.similarity - a.similarity).slice(0, 5),
-    },
-  };
+  return null;
 }
 
-function getAverageWordConfidence(words) {
-  if (!words.length) {
-    return 0;
-  }
-
-  const total = words.reduce((sum, word) => sum + (word.confidence ?? 0), 0);
-  return total / words.length;
-}
-
-function getPreprocessSettings() {
-  const contrast = Number.parseFloat(contrastSliderElement.value);
-  const threshold = Number.parseInt(thresholdSliderElement.value, 10);
+function getRoiRect(sourceWidth, sourceHeight) {
+  const roiWidth = Math.max(1, Math.floor(sourceWidth * ROI_WIDTH_RATIO));
+  const roiHeight = Math.max(1, Math.floor(sourceHeight * ROI_HEIGHT_RATIO));
 
   return {
-    enabled: preprocessToggleElement.checked,
-    contrast: Number.isFinite(contrast) ? contrast : 1.8,
-    threshold: Number.isFinite(threshold) ? threshold : 145,
+    x: Math.floor((sourceWidth - roiWidth) / 2),
+    y: Math.floor((sourceHeight - roiHeight) / 2),
+    width: roiWidth,
+    height: roiHeight,
   };
-}
-
-function updatePreprocessLabels() {
-  const { contrast, threshold } = getPreprocessSettings();
-  contrastValueElement.textContent = `${contrast.toFixed(1)}×`;
-  thresholdValueElement.textContent = `${threshold}`;
-  minConfidenceValueElement.textContent = `${getMinConfidenceThreshold()}%`;
 }
 
 async function lockLandscapeOrientation() {
   if (!screen.orientation?.lock) {
-    prependLogEntry("Orientation lock unsupported in this browser.");
     return;
   }
 
   try {
     await screen.orientation.lock("landscape");
-  } catch (error) {
-    prependLogEntry(`Unable to lock landscape orientation: ${error.message}`);
+  } catch (_error) {
+    // Ignore browser limitations.
   }
 }
 
@@ -325,7 +232,7 @@ function watchOrientationChanges() {
 
   orientationChangeHandler = async () => {
     if (window.matchMedia("(orientation: portrait)").matches) {
-      prependLogEntry("Detected portrait orientation while scanning; trying to relock landscape.");
+      prependLogEntry("Detected portrait orientation while scanning; attempting relock.");
       await lockLandscapeOrientation();
     }
   };
@@ -344,38 +251,16 @@ function stopWatchingOrientationChanges() {
   orientationChangeHandler = null;
 }
 
-function getRoiRect(sourceWidth, sourceHeight) {
-  const roiWidth = Math.max(1, Math.floor(sourceWidth * ROI_WIDTH_RATIO));
-  const roiHeight = Math.max(1, Math.floor(sourceHeight * ROI_HEIGHT_RATIO));
+function getDetector() {
+  if (!textDetector) {
+    if (!("TextDetector" in window)) {
+      throw new Error("TextDetector is unavailable. Use Chrome on Android for ML Kit-backed text detection.");
+    }
 
-  return {
-    x: Math.floor((sourceWidth - roiWidth) / 2),
-    y: Math.floor((sourceHeight - roiHeight) / 2),
-    width: roiWidth,
-    height: roiHeight,
-  };
-}
-
-function preprocessCanvasPixels(ctx, width, height, settings) {
-  if (!settings.enabled) {
-    return;
+    textDetector = new window.TextDetector();
   }
 
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const pixels = imageData.data;
-
-  for (let i = 0; i < pixels.length; i += 4) {
-    const grayscale = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
-    const contrasted = (grayscale - 128) * settings.contrast + 128;
-    const binary = contrasted >= settings.threshold ? 255 : 0;
-
-    pixels[i] = binary;
-    pixels[i + 1] = binary;
-    pixels[i + 2] = binary;
-    pixels[i + 3] = 255;
-  }
-
-  ctx.putImageData(imageData, 0, 0);
+  return textDetector;
 }
 
 async function startCamera() {
@@ -389,7 +274,6 @@ async function startCamera() {
       width: { ideal: 1280 },
       height: { ideal: 720 },
       aspectRatio: { ideal: 16 / 9, min: 1.3 },
-      resizeMode: "crop-and-scale",
     },
     audio: false,
   });
@@ -427,33 +311,25 @@ async function scanFrame() {
     roiRect.height,
   );
 
-  const preprocessSettings = getPreprocessSettings();
-  preprocessCanvasPixels(ctx, roiRect.width, roiRect.height, preprocessSettings);
-
   try {
-    const result = await Tesseract.recognize(canvasElement, "eng", {
-      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-      preserve_interword_spaces: "1",
-    });
-    const { match, debug } = findMatchingItem(result);
-    const avgConfidenceText = `avg word confidence ${debug.avgConfidence.toFixed(1)}%`;
+    const detector = getDetector();
+    const blocks = await detector.detect(canvasElement);
+    const rawText = blocks
+      .map((block) => block.rawValue || block.text || "")
+      .filter(Boolean)
+      .join("\n");
+
+    const match = findMatchingItem(rawText);
 
     if (match) {
       checkedIndices.add(match.index);
       updateAlphabeticalCursor();
       renderChecklist();
       setStatus(`✅ Matched catalog item: ${match.name}`, true);
-      prependLogEntry(`Marked collected: ${match.name} (${avgConfidenceText})`);
+      prependLogEntry(`Marked collected: ${match.name}`);
     } else {
       setStatus("Scanning inside highlighted rectangle... no new matches yet.");
-      prependLogEntry(`No new item match in this frame (${avgConfidenceText}).`);
-    }
-
-    if (isDebugModeEnabled()) {
-      const bestDebugText = debug.best
-        ? `best="${debug.best.candidate}" -> "${debug.best.item.name}" (${(debug.best.similarity * 100).toFixed(1)}% similarity)`
-        : "best=no candidate";
-      prependLogEntry(`DEBUG: ${bestDebugText}; threshold=${getMinConfidenceThreshold()}%`);
+      prependLogEntry(`No new item match in this frame. OCR: ${rawText || "<none>"}`);
     }
 
     if (alphabeticalCursor >= normalizedItems.length) {
@@ -463,6 +339,7 @@ async function scanFrame() {
   } catch (error) {
     setStatus(`OCR error: ${error.message}`);
     prependLogEntry(`OCR error: ${error.message}`);
+    stopScan();
   } finally {
     scanInProgress = false;
   }
@@ -514,10 +391,6 @@ async function startScan() {
 }
 
 renderChecklist();
-updatePreprocessLabels();
 startButton.addEventListener("click", startScan);
 stopButton.addEventListener("click", stopScan);
-contrastSliderElement.addEventListener("input", updatePreprocessLabels);
-thresholdSliderElement.addEventListener("input", updatePreprocessLabels);
-minConfidenceSliderElement.addEventListener("input", updatePreprocessLabels);
 window.addEventListener("beforeunload", stopScan);
