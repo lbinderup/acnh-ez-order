@@ -57,12 +57,16 @@ const windowElement = document.getElementById("ocr-window");
 const preprocessToggleElement = document.getElementById("ocr-preprocess");
 const contrastSliderElement = document.getElementById("ocr-contrast");
 const thresholdSliderElement = document.getElementById("ocr-threshold");
+const minConfidenceSliderElement = document.getElementById("ocr-min-confidence");
+const debugModeToggleElement = document.getElementById("ocr-debug-mode");
 const contrastValueElement = document.getElementById("ocr-contrast-value");
 const thresholdValueElement = document.getElementById("ocr-threshold-value");
+const minConfidenceValueElement = document.getElementById("ocr-min-confidence-value");
 
 let cameraStream = null;
 let scanIntervalId = null;
 let scanInProgress = false;
+let orientationChangeHandler = null;
 
 const normalizedItems = AUTHORITATIVE_ITEMS.map((name, index) => ({
   index,
@@ -85,6 +89,15 @@ function prependLogEntry(message) {
   const item = document.createElement("li");
   item.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
   logElement.prepend(item);
+}
+
+function getMinConfidenceThreshold() {
+  const threshold = Number.parseInt(minConfidenceSliderElement.value, 10);
+  return Number.isFinite(threshold) ? threshold : 62;
+}
+
+function isDebugModeEnabled() {
+  return debugModeToggleElement.checked;
 }
 
 function renderChecklist() {
@@ -181,13 +194,50 @@ function extractCandidatePhrases(rawText) {
   return [...candidates];
 }
 
-function findMatchingItem(rawText) {
-  const candidates = extractCandidatePhrases(rawText);
+function extractCandidatePhrasesFromWords(words, minConfidence) {
+  const candidates = new Set();
+  const highConfidenceWords = (words || [])
+    .filter((word) => (word.confidence ?? 0) >= minConfidence)
+    .map((word) => normalizeText(word.text))
+    .filter(Boolean);
+
+  for (let start = 0; start < highConfidenceWords.length; start += 1) {
+    for (let length = 1; length <= 5 && start + length <= highConfidenceWords.length; length += 1) {
+      candidates.add(highConfidenceWords.slice(start, start + length).join(" "));
+    }
+  }
+
+  return [...candidates];
+}
+
+function scoreCandidateAgainstTarget(candidate, target) {
+  if (!candidate || !target) {
+    return 0;
+  }
+
+  if (candidate === target) {
+    return 1;
+  }
+
+  const distance = levenshteinDistance(candidate, target);
+  const maxLen = Math.max(candidate.length, target.length);
+  return Math.max(0, 1 - distance / Math.max(1, maxLen));
+}
+
+function findMatchingItem(result) {
+  const rawText = result.data.text || "";
+  const minConfidence = getMinConfidenceThreshold();
+  const rawTextCandidates = extractCandidatePhrases(rawText);
+  const wordCandidates = extractCandidatePhrasesFromWords(result.data.words || [], minConfidence);
+  const candidates = [...new Set([...wordCandidates, ...rawTextCandidates])];
+
   if (!candidates.length || alphabeticalCursor >= normalizedItems.length) {
-    return null;
+    return { match: null, debug: { candidates: [], best: null, avgConfidence: 0 } };
   }
 
   const endIndex = Math.min(normalizedItems.length - 1, alphabeticalCursor + ACTIVE_LOOKAHEAD_COUNT);
+  const debugScored = [];
+  let best = null;
 
   for (let i = alphabeticalCursor; i <= endIndex; i += 1) {
     if (checkedIndices.has(i)) {
@@ -196,13 +246,45 @@ function findMatchingItem(rawText) {
 
     const item = normalizedItems[i];
     for (const candidate of candidates) {
-      if (isCloseMatch(candidate, item.normalized)) {
-        return item;
+      const similarity = scoreCandidateAgainstTarget(candidate, item.normalized);
+      const scored = { item, candidate, similarity };
+      debugScored.push(scored);
+
+      if (!best || similarity > best.similarity) {
+        best = scored;
+      }
+
+      if (isCloseMatch(candidate, item.normalized) && similarity >= 0.85) {
+        return {
+          match: item,
+          debug: {
+            candidates,
+            best: scored,
+            avgConfidence: getAverageWordConfidence(result.data.words || []),
+          },
+        };
       }
     }
   }
 
-  return null;
+  return {
+    match: null,
+    debug: {
+      candidates,
+      best,
+      avgConfidence: getAverageWordConfidence(result.data.words || []),
+      topScored: debugScored.sort((a, b) => b.similarity - a.similarity).slice(0, 5),
+    },
+  };
+}
+
+function getAverageWordConfidence(words) {
+  if (!words.length) {
+    return 0;
+  }
+
+  const total = words.reduce((sum, word) => sum + (word.confidence ?? 0), 0);
+  return total / words.length;
 }
 
 function getPreprocessSettings() {
@@ -220,6 +302,46 @@ function updatePreprocessLabels() {
   const { contrast, threshold } = getPreprocessSettings();
   contrastValueElement.textContent = `${contrast.toFixed(1)}×`;
   thresholdValueElement.textContent = `${threshold}`;
+  minConfidenceValueElement.textContent = `${getMinConfidenceThreshold()}%`;
+}
+
+async function lockLandscapeOrientation() {
+  if (!screen.orientation?.lock) {
+    prependLogEntry("Orientation lock unsupported in this browser.");
+    return;
+  }
+
+  try {
+    await screen.orientation.lock("landscape");
+  } catch (error) {
+    prependLogEntry(`Unable to lock landscape orientation: ${error.message}`);
+  }
+}
+
+function watchOrientationChanges() {
+  if (orientationChangeHandler) {
+    return;
+  }
+
+  orientationChangeHandler = async () => {
+    if (window.matchMedia("(orientation: portrait)").matches) {
+      prependLogEntry("Detected portrait orientation while scanning; trying to relock landscape.");
+      await lockLandscapeOrientation();
+    }
+  };
+
+  window.addEventListener("orientationchange", orientationChangeHandler);
+  window.addEventListener("resize", orientationChangeHandler);
+}
+
+function stopWatchingOrientationChanges() {
+  if (!orientationChangeHandler) {
+    return;
+  }
+
+  window.removeEventListener("orientationchange", orientationChangeHandler);
+  window.removeEventListener("resize", orientationChangeHandler);
+  orientationChangeHandler = null;
 }
 
 function getRoiRect(sourceWidth, sourceHeight) {
@@ -266,12 +388,17 @@ async function startCamera() {
       facingMode: { ideal: "environment" },
       width: { ideal: 1280 },
       height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9, min: 1.3 },
+      resizeMode: "crop-and-scale",
     },
     audio: false,
   });
 
   videoElement.srcObject = cameraStream;
   await videoElement.play();
+
+  await lockLandscapeOrientation();
+  watchOrientationChanges();
 }
 
 async function scanFrame() {
@@ -308,18 +435,25 @@ async function scanFrame() {
       tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
       preserve_interword_spaces: "1",
     });
-    const rawText = result.data.text || "";
-    const match = findMatchingItem(rawText);
+    const { match, debug } = findMatchingItem(result);
+    const avgConfidenceText = `avg word confidence ${debug.avgConfidence.toFixed(1)}%`;
 
     if (match) {
       checkedIndices.add(match.index);
       updateAlphabeticalCursor();
       renderChecklist();
       setStatus(`✅ Matched catalog item: ${match.name}`, true);
-      prependLogEntry(`Marked collected: ${match.name}`);
+      prependLogEntry(`Marked collected: ${match.name} (${avgConfidenceText})`);
     } else {
       setStatus("Scanning inside highlighted rectangle... no new matches yet.");
-      prependLogEntry("No new item match in this frame.");
+      prependLogEntry(`No new item match in this frame (${avgConfidenceText}).`);
+    }
+
+    if (isDebugModeEnabled()) {
+      const bestDebugText = debug.best
+        ? `best="${debug.best.candidate}" -> "${debug.best.item.name}" (${(debug.best.similarity * 100).toFixed(1)}% similarity)`
+        : "best=no candidate";
+      prependLogEntry(`DEBUG: ${bestDebugText}; threshold=${getMinConfidenceThreshold()}%`);
     }
 
     if (alphabeticalCursor >= normalizedItems.length) {
@@ -346,6 +480,8 @@ function stopScan() {
     }
     cameraStream = null;
   }
+
+  stopWatchingOrientationChanges();
 
   videoElement.srcObject = null;
   scanInProgress = false;
@@ -383,4 +519,5 @@ startButton.addEventListener("click", startScan);
 stopButton.addEventListener("click", stopScan);
 contrastSliderElement.addEventListener("input", updatePreprocessLabels);
 thresholdSliderElement.addEventListener("input", updatePreprocessLabels);
+minConfidenceSliderElement.addEventListener("input", updatePreprocessLabels);
 window.addEventListener("beforeunload", stopScan);
