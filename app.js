@@ -58,7 +58,7 @@ const FLOWER_GENE_FLAGS = {
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
-const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Clothing", "Materials", "Nature", "Tools", "Misc"]);
+const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
   Clothing: [
     "Tops",
@@ -70,7 +70,7 @@ const SUBCATEGORY_PRIORITY = {
     "Helmets",
     "Accessories",
     "Bags",
-    "Outfits",
+    "NPC Items",
     "Other",
   ],
   Furniture: [
@@ -404,7 +404,6 @@ const getSuperCategory = (kindName) => {
       "Kind_HousingKitBirdge",
       "Kind_GardenEditList",
       "Kind_MyDesignObject",
-      "Kind_MyDesignTexture",
       "Kind_CommonFabric",
       "Kind_DummyFtr",
       "Kind_SequenceOnly",
@@ -414,6 +413,7 @@ const getSuperCategory = (kindName) => {
       "Kind_DummyPresentbox",
       "Kind_DummyWrapping",
       "Kind_DummyWrappingOtoshidama",
+      "Kind_ShopTorso",
     ])
   ) {
     return "Furniture";
@@ -431,12 +431,13 @@ const getSuperCategory = (kindName) => {
       "Kind_Accessory",
       "Kind_Bag",
       "Kind_HandBag",
-      "Kind_ShopTorso",
+	  "Kind_Umbrella",
       "Kind_PlayerDemoOutfit",
       "Kind_NpcOutfit",
+      "Kind_MyDesignTexture",
     ])
   ) {
-    return "Clothing";
+    return "Fashion Items";
   }
   if (
     matchesAny(kindName, [
@@ -502,22 +503,23 @@ const getSubCategory = (kindName, superCategory) => {
   if (!kindName || !GROUPED_CATEGORIES.has(superCategory)) {
     return null;
   }
-  if (superCategory === "Clothing") {
+  if (superCategory === "Fashion Items") {
     if (kindName.startsWith("Top_")) return "Tops";
     if (kindName.startsWith("Bottoms_")) return "Bottoms";
     if (kindName.startsWith("Onepiece_")) return "Dress-up";
     if (kindName.startsWith("Shoes_") || kindName.includes("Kind_Shoes")) return "Shoes";
     if (kindName.includes("Kind_Socks")) return "Socks";
-    if (kindName.includes("Kind_Cap")) return "Hats";
-    if (kindName.includes("Kind_Helmet")) return "Helmets";
+    if (kindName.includes("Kind_Cap")  || kindName.includes("Kind_Helmet")) return "Headwear";
     if (kindName.includes("Kind_Accessory")) return "Accessories";
     if (kindName.includes("Kind_Bag") || kindName.includes("Kind_HandBag")) return "Bags";
+	if (kindName.includes("Kind_Umbrella")) return "Umbrellas";
     if (
       kindName.includes("Kind_ShopTorso") ||
       kindName.includes("Kind_PlayerDemoOutfit") ||
-      kindName.includes("Kind_NpcOutfit")
+      kindName.includes("Kind_NpcOutfit") ||
+      kindName.includes("Kind_MyDesignTexture")
     ) {
-      return "Outfits";
+      return "Internal (Unsafe)";
     }
     return "Other";
   }
@@ -548,10 +550,11 @@ const getSubCategory = (kindName, superCategory) => {
     return "Other";
   }
   if (superCategory === "Decor") {
-    if (kindName.includes("Kind_Wall") || kindName.includes("Kind_RoomWall")) return "Walls";
-    if (kindName.includes("Kind_Floor") || kindName.includes("Kind_RoomFloor")) return "Floors";
-    if (kindName.includes("Kind_Rug") || kindName.includes("Kind_CommonFabricRug")) return "Rugs";
+    if (kindName.includes("Kind_RoomWall")) return "Wallpaper";
+    if (kindName.includes("Kind_RoomFloor")) return "Floors";
+    if (kindName.includes("Kind_Rug")) return "Rugs";
     if (kindName.includes("Kind_Fence")) return "Fences";
+	if (kindName.includes("Kind_CommonFabricRug")) return "Internal (Unsafe)";
     return "Other";
   }
   if (superCategory === "Materials") {
@@ -713,7 +716,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "GardenEditList"];
+const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "ShopTorso", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "CommonFabricRug", "GardenEditList"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
@@ -727,7 +730,7 @@ const isUnsafeItem = (name, rawKindName, superCategory) => {
   if (rawKindName.includes("HousingKit")) {
     return true;
   }
-  if (superCategory === "Clothing" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
+  if (superCategory === "Fashion Items" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
     return true;
   }
   if (getSubCategory(rawKindName, superCategory) === "Infrastructure")
