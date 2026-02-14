@@ -58,7 +58,7 @@ const FLOWER_GENE_FLAGS = {
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
-const GROUPED_CATEGORIES = new Set(["Furniture", "Clothing", "Materials", "Nature", "Tools", "Misc"]);
+const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Clothing", "Materials", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
   Clothing: [
     "Tops",
@@ -75,17 +75,14 @@ const SUBCATEGORY_PRIORITY = {
   ],
   Furniture: [
     "Furniture",
-    "Walls",
-    "Floors",
-    "Rugs",
     "Structures",
-    "Art",
-    "Decor",
+    "Wall-mounted",
     "Infrastructure",
     "Rooms",
     "Custom",
     "Other",
   ],
+  Decor: ["Walls", "Floors", "Rugs", "Fences", "Other"],
   Materials: [
     "Crafting",
     "Customization",
@@ -378,19 +375,28 @@ const getSuperCategory = (kindName) => {
     return "Misc";
   }
   if (
+    matchesAny(kindName, [
+      "Kind_RoomWall",
+      "Kind_RoomFloor",
+      "Kind_Rug",
+      "Kind_Wall",
+      "Kind_Floor",
+      "Kind_Fence",
+      "Kind_CommonFabricRug",
+    ])
+  ) {
+    return "Decor";
+  }
+  if (
     kindName.startsWith("Ftr_") ||
     kindName.startsWith("Kind_Ftr") ||
     matchesAny(kindName, [
       "Kind_Room",
-      "Kind_Rug",
-      "Kind_Wall",
-      "Kind_Floor",
       "Kind_Pillar",
       "Kind_Picture",
       "Kind_Poster",
       "Kind_Sculpture",
       "Kind_DoorDeco",
-      "Kind_Fence",
       "Kind_BridgeItem",
       "Kind_SlopeItem",
       "Kind_HousePost",
@@ -516,18 +522,15 @@ const getSubCategory = (kindName, superCategory) => {
     return "Other";
   }
   if (superCategory === "Furniture") {
-    if (kindName.includes("Kind_Wall") || kindName.includes("Kind_RoomWall")) return "Walls";
-    if (kindName.includes("Kind_Floor") || kindName.includes("Kind_RoomFloor")) return "Floors";
-    if (kindName.includes("Kind_Rug") || kindName.includes("Kind_CommonFabricRug")) return "Rugs";
     if (kindName.includes("Kind_Pillar") || kindName.includes("Kind_Counter")) return "Structures";
     if (
       kindName.includes("Kind_Picture") ||
       kindName.includes("Kind_Poster") ||
       kindName.includes("Kind_Sculpture")
     ) {
-      return "Art";
+      return "Wall-mounted";
     }
-    if (kindName.includes("Kind_DoorDeco")) return "Decor";
+    if (kindName.includes("Kind_DoorDeco")) return "Wall-mounted";
     if (
       kindName.includes("Kind_BridgeItem") ||
       kindName.includes("Kind_SlopeItem") ||
@@ -543,6 +546,13 @@ const getSubCategory = (kindName, superCategory) => {
       return "Custom";
     }
     if (kindName.startsWith("Ftr_") || kindName.includes("Kind_Ftr")) return "Furniture";
+    return "Other";
+  }
+  if (superCategory === "Decor") {
+    if (kindName.includes("Kind_Wall") || kindName.includes("Kind_RoomWall")) return "Walls";
+    if (kindName.includes("Kind_Floor") || kindName.includes("Kind_RoomFloor")) return "Floors";
+    if (kindName.includes("Kind_Rug") || kindName.includes("Kind_CommonFabricRug")) return "Rugs";
+    if (kindName.includes("Kind_Fence")) return "Fences";
     return "Other";
   }
   if (superCategory === "Materials") {
@@ -704,7 +714,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone","MyDesignObject","MyDesignTexture","CommonFabricObject"];
+const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "GardenEditList"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
