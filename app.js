@@ -705,6 +705,16 @@ const getSelectedNameVariantLabel = (item) => {
 
 const toTitleCase = (value) => value.replace(/\b\w/g, (char) => char.toUpperCase());
 
+const stripTrailingParentheticalQualifier = (value) => {
+  let normalized = value;
+  while (/\s*\([^()]*\)\s*$/.test(normalized)) {
+    normalized = normalized.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  }
+  return normalized;
+};
+
+const fixApostrophePossessiveCasing = (value) => value.replace(/(['’])S\b/g, "$1s");
+
 const buildDisplayNames = (rawNames) => {
   const names = [...rawNames];
   if (names.length > 0) {
@@ -716,7 +726,8 @@ const buildDisplayNames = (rawNames) => {
     if (!cleaned) {
       return `(Item #${String(index).padStart(3, "0")})`;
     }
-    const titleCased = toTitleCase(cleaned);
+    const withoutQualifier = stripTrailingParentheticalQualifier(cleaned) || cleaned;
+    const titleCased = fixApostrophePossessiveCasing(toTitleCase(withoutQualifier));
     if (seen.has(titleCased)) {
       return `${titleCased} (#${String(index).padStart(3, "0")})`;
     }
@@ -778,8 +789,9 @@ const UNSAFE_KIND_TOKENS = ["Kind_HarvestDish", "Kind_PitFallSeed", "EventObjFtr
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
-const isUnsafeItem = (name, rawKindName, superCategory) => {
-  if (name && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
+const isUnsafeItem = (displayName, rawName, rawKindName, superCategory) => {
+  if ((rawName && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(rawName))) ||
+      (displayName && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(displayName)))) {
     return true;
   }
   if (!rawKindName) {
@@ -788,7 +800,7 @@ const isUnsafeItem = (name, rawKindName, superCategory) => {
   if (rawKindName.includes("ぞうきんがけのバンダナ")) {
     return true;
   }
-  if (superCategory === "Fashion Items" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
+  if (superCategory === "Fashion Items" && displayName && CLOTHING_EMPTY_NAME_PATTERN.test(displayName)) {
     return true;
   }
   if (getSubCategory(rawKindName, superCategory) === "Infrastructure")
@@ -3002,7 +3014,8 @@ const loadCatalogItems = async () => {
     const superCategory = getSuperCategory(rawKindName);
     const subCategory = getSubCategory(rawKindName, superCategory);
     const hexId = formatItemHexId(index);
-    const isUnsafe = isUnsafeItem(name, rawKindName, superCategory);
+    const rawName = normalizedNames[index] ? normalizedNames[index].trim() : "";
+    const isUnsafe = isUnsafeItem(name, rawName, rawKindName, superCategory);
     const variantData = spriteVariantMap.get(hexId);
     const variants = variantData
       ? Array.from(variantData.variants)
