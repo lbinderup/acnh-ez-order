@@ -705,6 +705,16 @@ const getSelectedNameVariantLabel = (item) => {
 
 const toTitleCase = (value) => value.replace(/\b\w/g, (char) => char.toUpperCase());
 
+const stripTrailingParentheticalQualifier = (value) => {
+  let normalized = value;
+  while (/\s*\([^()]*\)\s*$/.test(normalized)) {
+    normalized = normalized.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  }
+  return normalized;
+};
+
+const fixApostrophePossessiveCasing = (value) => value.replace(/(['’])S\b/g, "$1s");
+
 const buildDisplayNames = (rawNames) => {
   const names = [...rawNames];
   if (names.length > 0) {
@@ -716,7 +726,8 @@ const buildDisplayNames = (rawNames) => {
     if (!cleaned) {
       return `(Item #${String(index).padStart(3, "0")})`;
     }
-    const titleCased = toTitleCase(cleaned);
+    const withoutQualifier = stripTrailingParentheticalQualifier(cleaned) || cleaned;
+    const titleCased = fixApostrophePossessiveCasing(toTitleCase(withoutQualifier));
     if (seen.has(titleCased)) {
       return `${titleCased} (#${String(index).padStart(3, "0")})`;
     }
