@@ -789,8 +789,9 @@ const UNSAFE_KIND_TOKENS = ["Kind_HarvestDish", "Kind_PitFallSeed", "EventObjFtr
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
-const isUnsafeItem = (name, rawKindName, superCategory) => {
-  if (name && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
+const isUnsafeItem = (displayName, rawName, rawKindName, superCategory) => {
+  if ((rawName && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(rawName))) ||
+      (displayName && UNSAFE_NAME_PATTERNS.some((pattern) => pattern.test(displayName)))) {
     return true;
   }
   if (!rawKindName) {
@@ -799,7 +800,7 @@ const isUnsafeItem = (name, rawKindName, superCategory) => {
   if (rawKindName.includes("ぞうきんがけのバンダナ")) {
     return true;
   }
-  if (superCategory === "Fashion Items" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
+  if (superCategory === "Fashion Items" && displayName && CLOTHING_EMPTY_NAME_PATTERN.test(displayName)) {
     return true;
   }
   if (getSubCategory(rawKindName, superCategory) === "Infrastructure")
@@ -3013,7 +3014,8 @@ const loadCatalogItems = async () => {
     const superCategory = getSuperCategory(rawKindName);
     const subCategory = getSubCategory(rawKindName, superCategory);
     const hexId = formatItemHexId(index);
-    const isUnsafe = isUnsafeItem(name, rawKindName, superCategory);
+    const rawName = normalizedNames[index] ? normalizedNames[index].trim() : "";
+    const isUnsafe = isUnsafeItem(name, rawName, rawKindName, superCategory);
     const variantData = spriteVariantMap.get(hexId);
     const variants = variantData
       ? Array.from(variantData.variants)
