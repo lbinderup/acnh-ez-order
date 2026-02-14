@@ -61,12 +61,17 @@ const OCR_ROI_WIDTH_RATIO = 0.84;
 const OCR_ROI_HEIGHT_RATIO = 0.26;
 const OCR_PREPROCESS_CONTRAST = 1.8;
 const OCR_PREPROCESS_THRESHOLD = 145;
+const OCR_MIN_CANDIDATE_CHARS = 4;
+const OCR_MIN_CANDIDATE_WORDS = 2;
+const OCR_MATCH_SIMILARITY_THRESHOLD = 0.92;
+const OCR_REQUIRED_CONSECUTIVE_MATCHES = 2;
 
 let ocrCameraStream = null;
 let ocrScanIntervalId = null;
 let ocrScanInProgress = false;
 const catalogedHexIds = new Set();
 const detectedScanKeys = new Set();
+const ocrConsecutiveMatchCounts = new Map();
 
 let categoryDropdownListenerBound = false;
 let isOrderPopoverOpen = false;
@@ -2895,14 +2900,22 @@ const extractOcrCandidates = (result) => {
     .filter((word) => (word.confidence ?? 0) >= minConfidence)
     .map((word) => normalizeOcrText(word.text))
     .filter(Boolean);
-  const candidates = new Set(lines);
+  const candidates = new Set();
   const sourceWords = words.length > 0 ? words : lines.flatMap((line) => line.split(" "));
   for (let start = 0; start < sourceWords.length; start += 1) {
     for (let length = 1; length <= 6 && start + length <= sourceWords.length; length += 1) {
-      candidates.add(sourceWords.slice(start, start + length).join(" "));
+      const phrase = sourceWords.slice(start, start + length).join(" ").trim();
+      if (!phrase) {
+        continue;
+      }
+      const wordCount = phrase.split(" ").filter(Boolean).length;
+      if (phrase.length < OCR_MIN_CANDIDATE_CHARS || wordCount < OCR_MIN_CANDIDATE_WORDS) {
+        continue;
+      }
+      candidates.add(phrase);
     }
   }
-  return [...candidates].filter(Boolean);
+  return [...candidates];
 };
 
 const findOcrTargetMatch = (result, targets) => {
@@ -2913,7 +2926,7 @@ const findOcrTargetMatch = (result, targets) => {
       continue;
     }
     for (const candidate of candidates) {
-      if (candidate.includes(target.normalized) || target.normalized.includes(candidate)) {
+      if (candidate.includes(target.normalized)) {
         return { match: target, best: { target, candidate, similarity: 1 }, candidates };
       }
       const distance = ocrLevenshteinDistance(candidate, target.normalized);
@@ -2924,7 +2937,7 @@ const findOcrTargetMatch = (result, targets) => {
     }
   }
   return {
-    match: best && best.similarity >= 0.85 ? best.target : null,
+    match: best && best.similarity >= OCR_MATCH_SIMILARITY_THRESHOLD ? best.target : null,
     best,
     candidates,
   };
@@ -2953,6 +2966,7 @@ const stopOcrScan = () => {
   ocrScanInProgress = false;
   if (ocrStartButton) ocrStartButton.disabled = false;
   if (ocrStopButton) ocrStopButton.disabled = true;
+  ocrConsecutiveMatchCounts.clear();
   prependOcrDebugLog("Scanner stopped.");
 };
 
@@ -2987,17 +3001,29 @@ const scanOcrFrame = async () => {
     });
     const targets = getOcrTargets();
     const { match, best, candidates } = findOcrTargetMatch(result, targets);
-    const confidenceSummary = `conf≥${getOcrMinConfidenceThreshold()}%`; 
+    const confidenceSummary = `conf≥${getOcrMinConfidenceThreshold()}%`;
     if (match) {
-      detectedScanKeys.add(match.key);
-      applyCatalogStateByKey(match.key, true);
-      showToast(`Detected: ${match.name}`);
-      prependOcrDebugLog(`MATCH ${match.name} (${confidenceSummary})`);
-      if (ocrStatusElement) {
-        ocrStatusElement.textContent = `✅ Detected ${match.name}`;
-        ocrStatusElement.classList.add("match");
+      const nextCount = (ocrConsecutiveMatchCounts.get(match.key) || 0) + 1;
+      ocrConsecutiveMatchCounts.set(match.key, nextCount);
+      if (nextCount >= OCR_REQUIRED_CONSECUTIVE_MATCHES) {
+        detectedScanKeys.add(match.key);
+        ocrConsecutiveMatchCounts.clear();
+        applyCatalogStateByKey(match.key, true);
+        showToast(`Detected: ${match.name}`);
+        prependOcrDebugLog(`MATCH ${match.name} (${confidenceSummary}, frames=${nextCount})`);
+        if (ocrStatusElement) {
+          ocrStatusElement.textContent = `✅ Detected ${match.name}`;
+          ocrStatusElement.classList.add("match");
+        }
+      } else {
+        prependOcrDebugLog(`Candidate ${match.name} pending (${confidenceSummary}, frames=${nextCount}/${OCR_REQUIRED_CONSECUTIVE_MATCHES})`);
+        if (ocrStatusElement) {
+          ocrStatusElement.textContent = `Candidate found: ${match.name} (${nextCount}/${OCR_REQUIRED_CONSECUTIVE_MATCHES})`;
+          ocrStatusElement.classList.remove("match");
+        }
       }
     } else {
+      ocrConsecutiveMatchCounts.clear();
       const bestText = best
         ? `best="${best.candidate}" → "${best.target.name}" (${(best.similarity * 100).toFixed(1)}%)`
         : "best=n/a";
@@ -3027,6 +3053,7 @@ const startOcrScan = async () => {
   }
   try {
     prependOcrDebugLog("Starting camera scan...");
+    prependOcrDebugLog(`Rules: minCandidate=${OCR_MIN_CANDIDATE_CHARS} chars, minWords=${OCR_MIN_CANDIDATE_WORDS}, similarity≥${(OCR_MATCH_SIMILARITY_THRESHOLD * 100).toFixed(0)}%, consecutive=${OCR_REQUIRED_CONSECUTIVE_MATCHES}`);
     ocrCameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
@@ -3052,6 +3079,7 @@ const openOcrModal = () => {
   if (!ocrModal) return;
   ocrModal.hidden = false;
   detectedScanKeys.clear();
+  ocrConsecutiveMatchCounts.clear();
   clearOcrDebugLog();
   prependOcrDebugLog("Ready. Press Start camera scan.");
   updateOcrLabels();
