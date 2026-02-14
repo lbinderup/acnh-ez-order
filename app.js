@@ -58,7 +58,7 @@ const FLOWER_GENE_FLAGS = {
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
-const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Nature", "Tools", "Misc"]);
+const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Food", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
   Clothing: [
     "Tops",
@@ -93,6 +93,7 @@ const SUBCATEGORY_PRIORITY = {
   ],
   Nature: ["Fish", "Insects", "Fossils", "Gyroids", "Flowers", "Fruit", "Mushrooms", "Shrubs", "Other"],
   Tools: ["Core Tools", "Utility", "Instruments", "Party", "Apps", "Other"],
+  Food: ["Dishes", "Drinks"],
   Misc: ["Consumables", "Tickets", "Recipes", "Music", "Events", "Quests", "Currency", "Other"],
 };
 let catalogItems = [];
@@ -394,6 +395,7 @@ const getSuperCategory = (kindName) => {
       "Kind_Sculpture",
       "Kind_DoorDeco",
       "Kind_DummyFtr",
+      "Kind_EventObjFtr",
       "Kind_ShopTorso",
     ])
   ) {
@@ -428,7 +430,9 @@ const getSuperCategory = (kindName) => {
       "Kind_Ladder",
       "Kind_FishingRod",
       "Kind_Slingshot",
+	  "Kind_Watering",
       "Kind_Megaphone",
+	  "Kind_WoodenStickTool",
       "Kind_Ocarina",
       "Kind_Panflute",
       "Kind_Maracas",
@@ -436,8 +440,29 @@ const getSuperCategory = (kindName) => {
       "Kind_Partyhorn",
       "Kind_PartyPopper",
       "Kind_BlowBubble",
-      "Kind_SubTool",
       "Kind_SmartPhone",
+	  "Kind_ChangeStick",
+	  "Kind_StickLight",
+      "Kind_SubTool",
+      "Kind_Tapioca",
+      "Kind_Juice",
+      "Kind_JuiceFuzzyapple",
+      "Kind_Icecandy",
+	  "Kind_BdayCupcake",
+	  "Kind_Lantern",
+	  "Kind_SettingLadder",
+	  "Kind_Balloon",
+	  "Kind_SpeakerMegaphone",
+	  "Kind_HandheldPennant",
+	  "Kind_SoySet",
+	  "Kind_Basket",
+	  "Kind_Windmill",
+	  "Kind_Uchiwa",
+	  "Kind_Otoshidama",
+	  "Kind_CraftPhoneCase",
+	  "Kind_SouvenirChocolate",
+      "Kind_Candy",
+      "Kind_Candyfloss",
     ])
   ) {
     return "Tools";
@@ -450,12 +475,22 @@ const getSuperCategory = (kindName) => {
       "Kind_Fossil",
       "Kind_Gyroid",
       "Kind_Flower",
-      "Kind_Fruit",
-      "Kind_Mushroom",
       "Kind_Bush",
+	  "Kind_Tree",
+	  "Kind_TreeSeedling",
+	  "Kind_VegeTree",
+	  "Kind_VegeSeedling",
     ])
   ) {
     return "Nature";
+  }
+  if (
+    matchesAny(kindName, [
+      "Kind_Dishes",
+      "Kind_Drink",
+    ])
+  ) {
+    return "Food";
   }
   if (
     matchesAny(kindName, [
@@ -470,9 +505,15 @@ const getSuperCategory = (kindName) => {
       "Kind_Clay",
       "Kind_Stone",
       "Kind_Wood",
-      "Kind_Candy",
-      "Kind_Candyfloss",
       "Kind_Honeycomb",
+	  "Kind_Sakurapetal",
+	  "Kind_EasterEgg",
+	  "Kind_AutumnLeaf",
+	  "Kind_Trash",
+      "Kind_Fruit",
+	  "Kind_Vegetable",
+      "Kind_Mushroom",
+	  "Kind_JohnnyQuestDust",
     ])
   ) {
     return "Materials";
@@ -516,9 +557,10 @@ const getSubCategory = (kindName, superCategory) => {
     }
 	if (
 	  kindName.includes("Kind_DummyFtr") ||
+	  kindName.includes("Kind_EventObjFtr") ||
 	  kindName.includes("Kind_ShopTorso")
 	)
-	  return "Internal (Unsafe)";
+	return "Internal (Unsafe)";
     return "Other";
   }
   if (superCategory === "Decor") {
@@ -531,6 +573,7 @@ const getSubCategory = (kindName, superCategory) => {
   }
   if (superCategory === "Materials") {
     if (kindName.includes("Kind_CraftMaterial")) return "Crafting";
+    if (kindName.includes("Kind_Honeycomb")) return "Wasp Nest";
     if (kindName.includes("Kind_CraftRemake")) return "Customization";
     if (kindName.includes("Kind_CookingMaterial")) return "Cooking";
     if (kindName.includes("Kind_Ore") || kindName.includes("Kind_Stone") || kindName.includes("Kind_Clay")) {
@@ -538,11 +581,18 @@ const getSubCategory = (kindName, superCategory) => {
     }
     if (kindName.includes("Kind_Wood")) return "Wood";
     if (kindName.includes("Kind_Shell")) return "Shells";
-    if (kindName.includes("Kind_StarPiece") || kindName.includes("Kind_SnowCrystal") || kindName.includes("Kind_Feather")) {
+    if (kindName.includes("Kind_Fruit") || kindName.includes("Kind_Vegetable")) return "Produce";
+    if (kindName.includes("Kind_Mushroom")) return "Mushrooms";
+    if (kindName.includes("Kind_StarPiece")) return "Star Fragments";
+    if (kindName.includes("Kind_Trash")) return "Trash";
+    if (
+	  kindName.includes("Kind_SnowCrystal") ||
+	  kindName.includes("Kind_Sakurapetal") ||
+	  kindName.includes("Kind_AutumnLeaf") ||
+	  kindName.includes("Kind_EasterEgg") ||
+	  kindName.includes("Kind_Feather")
+	)  {
       return "Seasonal";
-    }
-    if (kindName.includes("Kind_Candy") || kindName.includes("Kind_Candyfloss") || kindName.includes("Kind_Honeycomb")) {
-      return "Sweets";
     }
     return "Other";
   }
@@ -552,9 +602,10 @@ const getSubCategory = (kindName, superCategory) => {
     if (kindName.includes("Kind_Fossil")) return "Fossils";
     if (kindName.includes("Kind_Gyroid")) return "Gyroids";
     if (kindName.includes("Kind_Flower")) return "Flowers";
-    if (kindName.includes("Kind_Fruit")) return "Fruit";
-    if (kindName.includes("Kind_Mushroom")) return "Mushrooms";
+    if (kindName.includes("Kind_VegeTree") || kindName.includes("Kind_VegeSeedling")) return "Vegetables";
+    if (kindName.includes("Kind_Tree") || kindName.includes("Kind_TreeSeedling")) return "Trees";
     if (kindName.includes("Kind_Bush")) return "Shrubs";
+	
     return "Other";
   }
   if (superCategory === "Tools") {
@@ -567,10 +618,14 @@ const getSubCategory = (kindName, superCategory) => {
         "Kind_FishingRod",
         "Kind_Slingshot",
         "Kind_Watering",
+		"Kind_WoodenStickTool",
       ])
     ) {
       return "Core Tools";
     }
+    if (kindName.includes("Kind_ChangeStick")) return "Wands";
+    if (kindName.includes("Kind_Balloon")) return "Balloons";
+    if (kindName.includes("Kind_CraftPhoneCase")) return "Phone Cases";
     if (kindName.includes("Kind_Megaphone")) return "Utility";
     if (matchesAny(kindName, ["Kind_Ocarina", "Kind_Panflute", "Kind_Maracas", "Kind_Tambourine"])) {
       return "Instruments";
@@ -579,24 +634,42 @@ const getSubCategory = (kindName, superCategory) => {
       return "Party";
     }
     if (kindName.includes("Kind_SmartPhone")) return "Apps";
+	if (
+	  kindName.includes("Kind_Icecandy") ||
+	  kindName.includes("Kind_Candy") ||
+      kindName.includes("Kind_Candyfloss")
+	  ) {
+      return "Sweets";
+    }
     if (kindName.includes("Kind_SubTool")) return "Other";
     return "Other";
   }
+  if (superCategory === "Food") {
+    if (matchesAny(kindName, ["Kind_Dishes", "Kind_Icecandy", "Kind_BdayCupcake"])) {
+      return "Dishes";
+    }
+    if (matchesAny(kindName, ["Kind_Drink", "Kind_Juice", "Kind_Tapioca"])) {
+      return "Drinks";
+    }
+  }
   if (superCategory === "Misc") {
-    if (matchesAny(kindName, ["Kind_Medicine", "Kind_Drink", "Kind_Juice", "Kind_Icecandy", "Kind_Tapioca"])) {
+    if (matchesAny(kindName, ["Kind_Medicine"])) {
       return "Consumables";
     }
-	    if (
+	if (
       kindName.includes("Kind_BridgeItem") ||
       kindName.includes("Kind_SlopeItem") ||
-      kindName.includes("Kind_HousePost") ||
       kindName.includes("Kind_HousingKit") ||
 	  kindName.includes("Kind_HousingKitBirdge") ||
-	  kindName.includes("Kind_HousingKitRcoQuest")
+	  kindName.includes("Kind_HousingKitRcoQuest") ||
+	  kindName.includes("Kind_GroundMaker") ||
+	  kindName.includes("Kind_RiverMaker")	  
     ) {
       return "Infrastructure";
     }
+    if (kindName.includes("Kind_HousePost")) return "Mailboxes";
     if (kindName.includes("Kind_Bromide")) return "Photos";
+    if (kindName.includes("Kind_WrappingPaper")) return "Wrapping Paper";
     if (kindName.includes("Ticket")) return "Tickets";
     if (kindName.includes("Recipe") || kindName.includes("DIYRecipe")) return "Recipes";
     if (kindName.includes("Kind_Music")) return "Music";
@@ -701,7 +774,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "OneRoomBox", "CliffMaker", "HousingKit", "PlayerDemoOutfit", "NpcOutfit", "ShopTorso", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "CommonFabricRug", "GardenEditList"];
+const UNSAFE_KIND_TOKENS = ["Kind_HarvestDish", "Kind_PitFallSeed", "EventObjFtr", "Dummy", "GroundMaker", "RiverMaker", "LicenseItem", "PhotoStudioList", "HousePost", "OneRoomBox", "CliffMaker", "HousingKit", "PlayerDemoOutfit", "NpcOutfit", "ShopTorso", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "CommonFabricRug", "GardenEditList", "LostQuest", "MessageBottle", "QuestChristmasPresentbox", "QuestWrapping"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
