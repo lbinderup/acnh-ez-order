@@ -176,21 +176,18 @@
             Enable grayscale + contrast + threshold
           </label>
           <label>
-            Contrast
-            <input id="ocr-contrast" type="range" min="0.6" max="2.8" step="0.1" value="1.8" />
-            <span id="ocr-contrast-value">1.8×</span>
-          </label>
-          <label>
-            Threshold
-            <input id="ocr-threshold" type="range" min="80" max="220" step="5" value="145" />
-            <span id="ocr-threshold-value">145</span>
-          </label>
-          <label>
             Minimum confidence
             <input id="ocr-min-confidence" type="range" min="0" max="95" step="1" value="85" />
             <span id="ocr-min-confidence-value">85%</span>
           </label>
         </fieldset>
+        <div class="ocr-debug-wrap">
+          <div class="ocr-debug-header">
+            <strong>Debug log</strong>
+            <button id="clear-ocr-debug" type="button" class="secondary">Clear</button>
+          </div>
+          <ol id="ocr-debug-log" class="ocr-log"></ol>
+        </div>
       </section>
     </div>
 

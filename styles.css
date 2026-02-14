@@ -1044,6 +1044,21 @@ footer {
 }
 
 
+.ocr-debug-wrap {
+  margin-top: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+}
+
+.ocr-debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
 .ocr-meta {
   margin: 0.3rem 0;
   color: var(--muted);

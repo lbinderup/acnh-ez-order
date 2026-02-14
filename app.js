@@ -51,16 +51,16 @@ const ocrStatusElement = document.getElementById("ocr-status");
 const ocrVideoElement = document.getElementById("ocr-video");
 const ocrCanvasElement = document.getElementById("ocr-canvas");
 const ocrPreprocessToggleElement = document.getElementById("ocr-preprocess");
-const ocrContrastSliderElement = document.getElementById("ocr-contrast");
-const ocrThresholdSliderElement = document.getElementById("ocr-threshold");
 const ocrMinConfidenceSliderElement = document.getElementById("ocr-min-confidence");
-const ocrContrastValueElement = document.getElementById("ocr-contrast-value");
-const ocrThresholdValueElement = document.getElementById("ocr-threshold-value");
 const ocrMinConfidenceValueElement = document.getElementById("ocr-min-confidence-value");
+const ocrDebugLogElement = document.getElementById("ocr-debug-log");
+const clearOcrDebugButton = document.getElementById("clear-ocr-debug");
 
 const OCR_SCAN_INTERVAL_MS = 2200;
 const OCR_ROI_WIDTH_RATIO = 0.84;
 const OCR_ROI_HEIGHT_RATIO = 0.26;
+const OCR_PREPROCESS_CONTRAST = 1.8;
+const OCR_PREPROCESS_THRESHOLD = 145;
 
 let ocrCameraStream = null;
 let ocrScanIntervalId = null;
@@ -2835,12 +2835,25 @@ const getOcrRoiRect = (sourceWidth, sourceHeight) => {
 };
 
 const updateOcrLabels = () => {
-  if (!ocrContrastValueElement || !ocrThresholdValueElement || !ocrMinConfidenceValueElement) {
+  if (!ocrMinConfidenceValueElement) {
     return;
   }
-  ocrContrastValueElement.textContent = `${Number.parseFloat(ocrContrastSliderElement.value).toFixed(1)}×`;
-  ocrThresholdValueElement.textContent = `${Number.parseInt(ocrThresholdSliderElement.value, 10)}`;
   ocrMinConfidenceValueElement.textContent = `${getOcrMinConfidenceThreshold()}%`;
+};
+
+const prependOcrDebugLog = (message) => {
+  if (!ocrDebugLogElement) {
+    return;
+  }
+  const row = document.createElement("li");
+  row.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+  ocrDebugLogElement.prepend(row);
+};
+
+const clearOcrDebugLog = () => {
+  if (ocrDebugLogElement) {
+    ocrDebugLogElement.textContent = "";
+  }
 };
 
 const getOcrTargets = () => {
@@ -2901,16 +2914,20 @@ const findOcrTargetMatch = (result, targets) => {
     }
     for (const candidate of candidates) {
       if (candidate.includes(target.normalized) || target.normalized.includes(candidate)) {
-        return target;
+        return { match: target, best: { target, candidate, similarity: 1 }, candidates };
       }
       const distance = ocrLevenshteinDistance(candidate, target.normalized);
       const similarity = 1 - distance / Math.max(1, Math.max(candidate.length, target.normalized.length));
       if (!best || similarity > best.similarity) {
-        best = { target, similarity };
+        best = { target, candidate, similarity };
       }
     }
   }
-  return best && best.similarity >= 0.85 ? best.target : null;
+  return {
+    match: best && best.similarity >= 0.85 ? best.target : null,
+    best,
+    candidates,
+  };
 };
 
 const applyCatalogStateByKey = (key, isCataloged) => {
@@ -2936,6 +2953,7 @@ const stopOcrScan = () => {
   ocrScanInProgress = false;
   if (ocrStartButton) ocrStartButton.disabled = false;
   if (ocrStopButton) ocrStopButton.disabled = true;
+  prependOcrDebugLog("Scanner stopped.");
 };
 
 const scanOcrFrame = async () => {
@@ -2951,8 +2969,8 @@ const scanOcrFrame = async () => {
   if (ocrPreprocessToggleElement?.checked) {
     const imageData = ctx.getImageData(0, 0, roi.width, roi.height);
     const pixels = imageData.data;
-    const contrast = Number.parseFloat(ocrContrastSliderElement?.value || "1.8");
-    const threshold = Number.parseInt(ocrThresholdSliderElement?.value || "145", 10);
+    const contrast = OCR_PREPROCESS_CONTRAST;
+    const threshold = OCR_PREPROCESS_THRESHOLD;
     for (let i = 0; i < pixels.length; i += 4) {
       const grayscale = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
       const contrasted = (grayscale - 128) * contrast + 128;
@@ -2968,18 +2986,26 @@ const scanOcrFrame = async () => {
       preserve_interword_spaces: "1",
     });
     const targets = getOcrTargets();
-    const match = findOcrTargetMatch(result, targets);
+    const { match, best, candidates } = findOcrTargetMatch(result, targets);
+    const confidenceSummary = `conf≥${getOcrMinConfidenceThreshold()}%`; 
     if (match) {
       detectedScanKeys.add(match.key);
       applyCatalogStateByKey(match.key, true);
       showToast(`Detected: ${match.name}`);
+      prependOcrDebugLog(`MATCH ${match.name} (${confidenceSummary})`);
       if (ocrStatusElement) {
         ocrStatusElement.textContent = `✅ Detected ${match.name}`;
         ocrStatusElement.classList.add("match");
       }
-    } else if (ocrStatusElement) {
-      ocrStatusElement.textContent = "Scanning current result set...";
-      ocrStatusElement.classList.remove("match");
+    } else {
+      const bestText = best
+        ? `best="${best.candidate}" → "${best.target.name}" (${(best.similarity * 100).toFixed(1)}%)`
+        : "best=n/a";
+      prependOcrDebugLog(`No match (${confidenceSummary}, ${bestText}, candidates=${candidates.length})`);
+      if (ocrStatusElement) {
+        ocrStatusElement.textContent = "Scanning current result set...";
+        ocrStatusElement.classList.remove("match");
+      }
     }
   } catch (error) {
     if (ocrStatusElement) {
@@ -3000,6 +3026,7 @@ const startOcrScan = async () => {
     ocrStatusElement.classList.remove("match");
   }
   try {
+    prependOcrDebugLog("Starting camera scan...");
     ocrCameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
@@ -3025,6 +3052,8 @@ const openOcrModal = () => {
   if (!ocrModal) return;
   ocrModal.hidden = false;
   detectedScanKeys.clear();
+  clearOcrDebugLog();
+  prependOcrDebugLog("Ready. Press Start camera scan.");
   updateOcrLabels();
 };
 
@@ -3545,16 +3574,12 @@ if (ocrStopButton) {
   ocrStopButton.addEventListener("click", stopOcrScan);
 }
 
-if (ocrContrastSliderElement) {
-  ocrContrastSliderElement.addEventListener("input", updateOcrLabels);
-}
-
-if (ocrThresholdSliderElement) {
-  ocrThresholdSliderElement.addEventListener("input", updateOcrLabels);
-}
-
 if (ocrMinConfidenceSliderElement) {
   ocrMinConfidenceSliderElement.addEventListener("input", updateOcrLabels);
+}
+
+if (clearOcrDebugButton) {
+  clearOcrDebugButton.addEventListener("click", clearOcrDebugLog);
 }
 
 if (ocrModal) {
