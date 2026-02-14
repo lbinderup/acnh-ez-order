@@ -525,8 +525,7 @@ const getSubCategory = (kindName, superCategory) => {
     if (kindName.includes("Kind_Pillar") || kindName.includes("Kind_Counter")) return "Structures";
     if (
       kindName.includes("Kind_Picture") ||
-      kindName.includes("Kind_Poster") ||
-      kindName.includes("Kind_Sculpture")
+      kindName.includes("Kind_Poster")
     ) {
       return "Wall-mounted";
     }
