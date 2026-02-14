@@ -70,17 +70,14 @@ const SUBCATEGORY_PRIORITY = {
     "Helmets",
     "Accessories",
     "Bags",
-    "NPC Items",
+	"Umbrellas",
     "Other",
+    "Internal (Unsafe)",
   ],
   Furniture: [
     "Furniture",
-    "Structures",
     "Wall-mounted",
-    "Infrastructure",
-    "Rooms",
-    "Custom",
-    "Other",
+    "Internal (Unsafe)",
   ],
   Decor: ["Walls", "Floors", "Rugs", "Fences", "Other"],
   Materials: [
@@ -392,27 +389,11 @@ const getSuperCategory = (kindName) => {
     kindName.startsWith("Kind_Ftr") ||
     matchesAny(kindName, [
       "Kind_Room",
-      "Kind_Pillar",
       "Kind_Picture",
       "Kind_Poster",
       "Kind_Sculpture",
       "Kind_DoorDeco",
-      "Kind_BridgeItem",
-      "Kind_SlopeItem",
-      "Kind_HousePost",
-      "Kind_HousingKit",
-      "Kind_HousingKitBirdge",
-      "Kind_GardenEditList",
-      "Kind_MyDesignObject",
-      "Kind_CommonFabric",
       "Kind_DummyFtr",
-      "Kind_SequenceOnly",
-      "Kind_OneRoomBox",
-      "Kind_Counter",
-      "Kind_DummyCardboard",
-      "Kind_DummyPresentbox",
-      "Kind_DummyWrapping",
-      "Kind_DummyWrappingOtoshidama",
       "Kind_ShopTorso",
     ])
   ) {
@@ -524,29 +505,20 @@ const getSubCategory = (kindName, superCategory) => {
     return "Other";
   }
   if (superCategory === "Furniture") {
-    if (kindName.includes("Kind_Pillar") || kindName.includes("Kind_Counter")) return "Structures";
+    if (kindName.startsWith("Ftr_") || kindName.includes("Kind_Ftr") || kindName.includes("Kind_Sculpture"))
+      return "Furniture";
     if (
       kindName.includes("Kind_Picture") ||
-      kindName.includes("Kind_Poster")
+      kindName.includes("Kind_Poster") ||
+	  kindName.includes("Kind_DoorDeco")
     ) {
       return "Wall-mounted";
     }
-    if (kindName.includes("Kind_DoorDeco")) return "Wall-mounted";
-    if (
-      kindName.includes("Kind_BridgeItem") ||
-      kindName.includes("Kind_SlopeItem") ||
-      kindName.includes("Kind_HousePost") ||
-      kindName.includes("Kind_HousingKit")
-    ) {
-      return "Infrastructure";
-    }
-    if (kindName.includes("Kind_GardenEditList") || kindName.includes("Kind_OneRoomBox")) {
-      return "Rooms";
-    }
-    if (kindName.includes("Kind_MyDesign") || kindName.includes("Kind_CommonFabric")) {
-      return "Custom";
-    }
-    if (kindName.startsWith("Ftr_") || kindName.includes("Kind_Ftr")) return "Furniture";
+	if (
+	  kindName.includes("Kind_DummyFtr") ||
+	  kindName.includes("Kind_ShopTorso")
+	)
+	  return "Internal (Unsafe)";
     return "Other";
   }
   if (superCategory === "Decor") {
@@ -614,6 +586,17 @@ const getSubCategory = (kindName, superCategory) => {
     if (matchesAny(kindName, ["Kind_Medicine", "Kind_Drink", "Kind_Juice", "Kind_Icecandy", "Kind_Tapioca"])) {
       return "Consumables";
     }
+	    if (
+      kindName.includes("Kind_BridgeItem") ||
+      kindName.includes("Kind_SlopeItem") ||
+      kindName.includes("Kind_HousePost") ||
+      kindName.includes("Kind_HousingKit") ||
+	  kindName.includes("Kind_HousingKitBirdge") ||
+	  kindName.includes("Kind_HousingKitRcoQuest")
+    ) {
+      return "Infrastructure";
+    }
+    if (kindName.includes("Kind_Bromide")) return "Photos";
     if (kindName.includes("Ticket")) return "Tickets";
     if (kindName.includes("Recipe") || kindName.includes("DIYRecipe")) return "Recipes";
     if (kindName.includes("Kind_Music")) return "Music";
@@ -626,6 +609,8 @@ const getSubCategory = (kindName, superCategory) => {
     if (matchesAny(kindName, ["Kind_Money", "Kind_Turnip"])) {
       return "Currency";
     }
+	if (kindName.includes("Kind_Counter") || kindName.includes("Kind_Pillar"))
+	  return "Room Features";
     return "Other";
   }
   return null;
@@ -716,7 +701,7 @@ const applyPreviewIconOverrides = (items) => {
   });
 };
 
-const UNSAFE_KIND_TOKENS = ["Dummy", "CliffMaker", "PlayerDemoOutfit", "NpcOutfit", "ShopTorso", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "CommonFabricRug", "GardenEditList"];
+const UNSAFE_KIND_TOKENS = ["Dummy", "OneRoomBox", "CliffMaker", "HousingKit", "PlayerDemoOutfit", "NpcOutfit", "ShopTorso", "NnpcRoomMarker", "SequenceOnly", "SmartPhone", "MyDesignObject", "MyDesignTexture", "CommonFabricObject", "CommonFabricTexture", "CommonFabricRug", "GardenEditList"];
 const UNSAFE_NAME_PATTERNS = [/\(internal\)/i, /^dummy\b/i];
 const CLOTHING_EMPTY_NAME_PATTERN = /^\(Item #\d+\)$/;
 
@@ -727,7 +712,7 @@ const isUnsafeItem = (name, rawKindName, superCategory) => {
   if (!rawKindName) {
     return false;
   }
-  if (rawKindName.includes("HousingKit")) {
+  if (rawKindName.includes("ぞうきんがけのバンダナ")) {
     return true;
   }
   if (superCategory === "Fashion Items" && name && CLOTHING_EMPTY_NAME_PATTERN.test(name)) {
