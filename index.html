@@ -16,7 +16,6 @@
     <header class="app-nav">
       <a href="index.html" aria-current="page">Catalog</a>
       <a href="ocr-poc.html">OCR PoC (Tesseract)</a>
-      <a href="mlkit-poc.html">OCR PoC (Gutenye OCR)</a>
     </header>
 
     <main>
@@ -34,8 +33,8 @@
             <label class="select-label" for="sort-select">
               Sort by
               <select id="sort-select">
-                <option value="alpha" selected>Alphabetically</option>
-                <option value="category">Category</option>
+                <option value="alpha">Alphabetically</option>
+                <option value="category" selected>Category</option>
               </select>
             </label>
           </div>
@@ -148,13 +147,6 @@
         </div>
       </section>
     </div>
-
-    <footer>
-      <p>
-        Sprites are loaded from <code>resources/sprites</code> and catalog data is loaded from
-        <code>data/nhse</code>.
-      </p>
-    </footer>
 
     <script src="app.js"></script>
   </body>
