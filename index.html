@@ -15,7 +15,6 @@
   <body>
     <header class="app-nav">
       <a href="index.html" aria-current="page">Catalog</a>
-      <a href="ocr-poc.html">OCR PoC (Tesseract)</a>
     </header>
 
     <main>
@@ -46,6 +45,10 @@
             <span>Unsafe Items</span>
           </label>
           <button id="open-flower-generator" type="button" class="secondary">Generate Flowers</button>
+        </div>
+        <div class="search-results-header">
+          <p id="search-results-count" class="search-results-count">0 results</p>
+          <button id="open-ocr-scanner" type="button" class="secondary" disabled>Scan current results</button>
         </div>
         <div id="catalog-list" class="catalog-grid" aria-live="polite"></div>
         <div class="catalog-actions">
@@ -148,6 +151,52 @@
       </section>
     </div>
 
+    <div id="ocr-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-ocr-modal="true"></div>
+      <section class="modal-content" role="dialog" aria-modal="true" aria-labelledby="ocr-modal-title">
+        <div class="modal-header">
+          <h3 id="ocr-modal-title">OCR Catalog Scanner</h3>
+          <button id="close-ocr-modal" type="button" class="secondary">Close</button>
+        </div>
+        <p class="modal-description">Scan your in-game catalog. Detected names from the current search results are marked as cataloged automatically.</p>
+        <div class="ocr-controls">
+          <button id="start-ocr" type="button">Start camera scan</button>
+          <button id="stop-ocr" type="button" class="secondary" disabled>Stop</button>
+          <span id="ocr-status" class="ocr-status">Idle.</span>
+        </div>
+        <div class="ocr-video-wrap">
+          <video id="ocr-video" autoplay muted playsinline></video>
+          <div id="ocr-roi" class="ocr-roi" aria-hidden="true"></div>
+        </div>
+        <canvas id="ocr-canvas" hidden></canvas>
+        <fieldset class="ocr-controls-panel">
+          <legend>Image preprocessing</legend>
+          <label>
+            <input id="ocr-preprocess" type="checkbox" checked />
+            Enable grayscale + contrast + threshold
+          </label>
+          <label>
+            Contrast
+            <input id="ocr-contrast" type="range" min="0.6" max="2.8" step="0.1" value="1.8" />
+            <span id="ocr-contrast-value">1.8×</span>
+          </label>
+          <label>
+            Threshold
+            <input id="ocr-threshold" type="range" min="80" max="220" step="5" value="145" />
+            <span id="ocr-threshold-value">145</span>
+          </label>
+          <label>
+            Minimum confidence
+            <input id="ocr-min-confidence" type="range" min="0" max="95" step="1" value="85" />
+            <span id="ocr-min-confidence-value">85%</span>
+          </label>
+        </fieldset>
+      </section>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
