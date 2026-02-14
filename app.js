@@ -1491,10 +1491,25 @@ const updateCatalogActionButtons = () => {
 
 const normalizeOcrText = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 
+const getCatalogFurnitureBaseName = (item) => {
+  if (!item) {
+    return "";
+  }
+  const anchor = item.nameVariantAnchor || item;
+  if (anchor.nameVariantBaseName) {
+    return anchor.nameVariantBaseName;
+  }
+  if (item.nameVariantBaseName) {
+    return item.nameVariantBaseName;
+  }
+  const parsed = parseItemNameVariant(item.name);
+  return parsed ? parsed.baseName : item.name;
+};
+
 const getCatalogStateKey = (item) => {
   const selectedItem = getSelectedNameVariantItem(item);
   if (item.superCategory === "Furniture") {
-    return `furniture:${normalizeOcrText(item.nameVariantBaseName || item.name)}`;
+    return `furniture:${normalizeOcrText(getCatalogFurnitureBaseName(selectedItem))}`;
   }
   return `hex:${selectedItem.hexId}`;
 };
@@ -1511,9 +1526,21 @@ const loadCatalogedItems = () => {
     return;
   }
   stored.forEach((key) => {
-    if (typeof key === "string") {
-      catalogedHexIds.add(key);
+    if (typeof key !== "string") {
+      return;
     }
+    if (!key.startsWith("furniture:")) {
+      catalogedHexIds.add(key);
+      return;
+    }
+    const rawFurnitureName = key.slice("furniture:".length);
+    const normalizedRaw = normalizeOcrText(rawFurnitureName);
+    const matchedItem = catalogItems.find((item) => item.superCategory === "Furniture" && normalizeOcrText(item.name) === normalizedRaw);
+    if (matchedItem) {
+      catalogedHexIds.add(`furniture:${normalizeOcrText(getCatalogFurnitureBaseName(matchedItem))}`);
+      return;
+    }
+    catalogedHexIds.add(key);
   });
 };
 
@@ -1589,6 +1616,15 @@ const renderCatalog = () => {
     spriteFrame.classList.add("catalog-toggle");
     spriteFrame.title = "Toggle cataloged state";
     spriteFrame.addEventListener("click", () => toggleCatalogState(item));
+    const typeIcon = spriteFrame.querySelector(".type-icon");
+    if (typeIcon) {
+      typeIcon.title = "Toggle cataloged state";
+      typeIcon.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleCatalogState(item);
+      });
+    }
 
     let title;
     let meta;
@@ -2814,8 +2850,8 @@ const getOcrTargets = () => {
     if (!byKey.has(key)) {
       byKey.set(key, {
         key,
-        name: item.nameVariantBaseName || item.name,
-        normalized: normalizeOcrText(item.nameVariantBaseName || item.name),
+        name: item.superCategory === "Furniture" ? getCatalogFurnitureBaseName(item) : item.name,
+        normalized: normalizeOcrText(item.superCategory === "Furniture" ? getCatalogFurnitureBaseName(item) : item.name),
       });
     }
   });
