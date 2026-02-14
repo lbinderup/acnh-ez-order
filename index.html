@@ -172,6 +172,14 @@
         <fieldset class="ocr-controls-panel">
           <legend>Image preprocessing</legend>
           <label>
+            OCR preset
+            <select id="ocr-preset">
+              <option value="reliable" selected>Reliable (current)</option>
+              <option value="fast">Fast</option>
+              <option value="strict">Strict</option>
+            </select>
+          </label>
+          <label>
             <input id="ocr-preprocess" type="checkbox" checked />
             Enable grayscale + contrast + threshold
           </label>

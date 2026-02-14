@@ -55,16 +55,39 @@ const ocrMinConfidenceSliderElement = document.getElementById("ocr-min-confidenc
 const ocrMinConfidenceValueElement = document.getElementById("ocr-min-confidence-value");
 const ocrDebugLogElement = document.getElementById("ocr-debug-log");
 const clearOcrDebugButton = document.getElementById("clear-ocr-debug");
+const ocrPresetSelect = document.getElementById("ocr-preset");
 
-const OCR_SCAN_INTERVAL_MS = 2200;
 const OCR_ROI_WIDTH_RATIO = 0.84;
 const OCR_ROI_HEIGHT_RATIO = 0.26;
 const OCR_PREPROCESS_CONTRAST = 1.8;
 const OCR_PREPROCESS_THRESHOLD = 145;
-const OCR_MIN_CANDIDATE_CHARS = 4;
-const OCR_MIN_CANDIDATE_WORDS = 2;
-const OCR_MATCH_SIMILARITY_THRESHOLD = 0.92;
-const OCR_REQUIRED_CONSECUTIVE_MATCHES = 2;
+const OCR_PRESETS = {
+  reliable: {
+    label: "Reliable (current)",
+    scanIntervalMs: 2200,
+    minCandidateChars: 4,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.92,
+    requiredConsecutiveMatches: 2,
+  },
+  fast: {
+    label: "Fast",
+    scanIntervalMs: 1500,
+    minCandidateChars: 4,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.92,
+    requiredConsecutiveMatches: 1,
+  },
+  strict: {
+    label: "Strict",
+    scanIntervalMs: 2400,
+    minCandidateChars: 5,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.95,
+    requiredConsecutiveMatches: 3,
+  },
+};
+let activeOcrPresetKey = "reliable";
 
 let ocrCameraStream = null;
 let ocrScanIntervalId = null;
@@ -2846,6 +2869,17 @@ const updateOcrLabels = () => {
   ocrMinConfidenceValueElement.textContent = `${getOcrMinConfidenceThreshold()}%`;
 };
 
+const getActiveOcrPreset = () => OCR_PRESETS[activeOcrPresetKey] || OCR_PRESETS.reliable;
+
+const updateOcrPreset = () => {
+  if (!ocrPresetSelect) {
+    activeOcrPresetKey = "reliable";
+    return;
+  }
+  const nextKey = ocrPresetSelect.value;
+  activeOcrPresetKey = OCR_PRESETS[nextKey] ? nextKey : "reliable";
+};
+
 const prependOcrDebugLog = (message) => {
   if (!ocrDebugLogElement) {
     return;
@@ -2909,7 +2943,7 @@ const extractOcrCandidates = (result) => {
         continue;
       }
       const wordCount = phrase.split(" ").filter(Boolean).length;
-      if (phrase.length < OCR_MIN_CANDIDATE_CHARS || wordCount < OCR_MIN_CANDIDATE_WORDS) {
+      if (phrase.length < getActiveOcrPreset().minCandidateChars || wordCount < getActiveOcrPreset().minCandidateWords) {
         continue;
       }
       candidates.add(phrase);
@@ -2937,7 +2971,7 @@ const findOcrTargetMatch = (result, targets) => {
     }
   }
   return {
-    match: best && best.similarity >= OCR_MATCH_SIMILARITY_THRESHOLD ? best.target : null,
+    match: best && best.similarity >= getActiveOcrPreset().matchSimilarityThreshold ? best.target : null,
     best,
     candidates,
   };
@@ -3005,7 +3039,7 @@ const scanOcrFrame = async () => {
     if (match) {
       const nextCount = (ocrConsecutiveMatchCounts.get(match.key) || 0) + 1;
       ocrConsecutiveMatchCounts.set(match.key, nextCount);
-      if (nextCount >= OCR_REQUIRED_CONSECUTIVE_MATCHES) {
+      if (nextCount >= getActiveOcrPreset().requiredConsecutiveMatches) {
         detectedScanKeys.add(match.key);
         ocrConsecutiveMatchCounts.clear();
         applyCatalogStateByKey(match.key, true);
@@ -3016,9 +3050,9 @@ const scanOcrFrame = async () => {
           ocrStatusElement.classList.add("match");
         }
       } else {
-        prependOcrDebugLog(`Candidate ${match.name} pending (${confidenceSummary}, frames=${nextCount}/${OCR_REQUIRED_CONSECUTIVE_MATCHES})`);
+        prependOcrDebugLog(`Candidate ${match.name} pending (${confidenceSummary}, frames=${nextCount}/${getActiveOcrPreset().requiredConsecutiveMatches})`);
         if (ocrStatusElement) {
-          ocrStatusElement.textContent = `Candidate found: ${match.name} (${nextCount}/${OCR_REQUIRED_CONSECUTIVE_MATCHES})`;
+          ocrStatusElement.textContent = `Candidate found: ${match.name} (${nextCount}/${getActiveOcrPreset().requiredConsecutiveMatches})`;
           ocrStatusElement.classList.remove("match");
         }
       }
@@ -3045,6 +3079,7 @@ const scanOcrFrame = async () => {
 
 const startOcrScan = async () => {
   if (!ocrVideoElement) return;
+  updateOcrPreset();
   ocrStartButton.disabled = true;
   ocrStopButton.disabled = false;
   if (ocrStatusElement) {
@@ -3053,7 +3088,8 @@ const startOcrScan = async () => {
   }
   try {
     prependOcrDebugLog("Starting camera scan...");
-    prependOcrDebugLog(`Rules: minCandidate=${OCR_MIN_CANDIDATE_CHARS} chars, minWords=${OCR_MIN_CANDIDATE_WORDS}, similarity≥${(OCR_MATCH_SIMILARITY_THRESHOLD * 100).toFixed(0)}%, consecutive=${OCR_REQUIRED_CONSECUTIVE_MATCHES}`);
+    prependOcrDebugLog(`Preset: ${getActiveOcrPreset().label}`);
+    prependOcrDebugLog(`Rules: interval=${getActiveOcrPreset().scanIntervalMs}ms, minCandidate=${getActiveOcrPreset().minCandidateChars} chars, minWords=${getActiveOcrPreset().minCandidateWords}, similarity≥${(getActiveOcrPreset().matchSimilarityThreshold * 100).toFixed(0)}%, consecutive=${getActiveOcrPreset().requiredConsecutiveMatches}`);
     ocrCameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
@@ -3068,7 +3104,7 @@ const startOcrScan = async () => {
     await ocrVideoElement.play();
     if (ocrStatusElement) ocrStatusElement.textContent = "Camera active. Scanning current result set...";
     await scanOcrFrame();
-    ocrScanIntervalId = setInterval(scanOcrFrame, OCR_SCAN_INTERVAL_MS);
+    ocrScanIntervalId = setInterval(scanOcrFrame, getActiveOcrPreset().scanIntervalMs);
   } catch (error) {
     if (ocrStatusElement) ocrStatusElement.textContent = `Unable to start: ${error.message}`;
     stopOcrScan();
@@ -3080,8 +3116,10 @@ const openOcrModal = () => {
   ocrModal.hidden = false;
   detectedScanKeys.clear();
   ocrConsecutiveMatchCounts.clear();
+  updateOcrPreset();
   clearOcrDebugLog();
   prependOcrDebugLog("Ready. Press Start camera scan.");
+  prependOcrDebugLog(`Selected preset: ${getActiveOcrPreset().label}`);
   updateOcrLabels();
 };
 
@@ -3604,6 +3642,14 @@ if (ocrStopButton) {
 
 if (ocrMinConfidenceSliderElement) {
   ocrMinConfidenceSliderElement.addEventListener("input", updateOcrLabels);
+}
+
+if (ocrPresetSelect) {
+  ocrPresetSelect.value = activeOcrPresetKey;
+  ocrPresetSelect.addEventListener("change", () => {
+    updateOcrPreset();
+    prependOcrDebugLog(`Preset changed to: ${getActiveOcrPreset().label}`);
+  });
 }
 
 if (clearOcrDebugButton) {
