@@ -114,6 +114,7 @@ const FLOWER_GENE_FLAGS = {
   S2: 1 << 7,
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
+const VARIANT_ICON_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Food", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
@@ -1238,7 +1239,7 @@ const getVariantMetaLabel = (item) => {
   return `Variant ${variantIndex} · Subvariant ${subVariantIndex}`;
 };
 
-const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect }) => {
+const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect, getNextVariantIconDelayMs }) => {
   const row = document.createElement("div");
   row.className = "variant-picker-row";
 
@@ -1255,12 +1256,18 @@ const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect }) => 
     image.className = "variant-sprite";
     image.alt = `${item.name} ${label} ${variantIndex}`;
     if (label === "subvariant") {
-      assignSprite(image, item.hexId, getSelectedVariantIndex(item), variantIndex);
+      assignSpriteWithDelay(
+        image,
+        item.hexId,
+        getSelectedVariantIndex(item),
+        variantIndex,
+        getNextVariantIconDelayMs()
+      );
     } else {
       const previewSubVariant = item.subVariantsByVariant
         ? (item.subVariantsByVariant.get(variantIndex) || [])[0] ?? null
         : null;
-      assignSprite(image, item.hexId, variantIndex, previewSubVariant);
+      assignSpriteWithDelay(image, item.hexId, variantIndex, previewSubVariant, getNextVariantIconDelayMs());
     }
 
     button.appendChild(image);
@@ -1288,6 +1295,13 @@ const buildVariantPicker = (item) => {
   const container = document.createElement("div");
   container.className = "variant-picker";
 
+  let variantIconLoadIndex = 0;
+  const getNextVariantIconDelayMs = () => {
+    const delayMs = variantIconLoadIndex * VARIANT_ICON_LOAD_DELAY_MS;
+    variantIconLoadIndex += 1;
+    return delayMs;
+  };
+
   if (hasNamePicker) {
     const selectedNameVariant = getSelectedNameVariantItem(item);
     const nameRow = document.createElement("div");
@@ -1307,7 +1321,13 @@ const buildVariantPicker = (item) => {
       image.alt = `${item.name} (${option.label})`;
       const optionVariantIndex = getSelectedVariantIndex(option.item);
       const optionSubVariantIndex = getSelectedSubVariantIndex(option.item);
-      assignSprite(image, option.item.hexId, optionVariantIndex, optionSubVariantIndex);
+      assignSpriteWithDelay(
+        image,
+        option.item.hexId,
+        optionVariantIndex,
+        optionSubVariantIndex,
+        getNextVariantIconDelayMs()
+      );
 
       button.appendChild(image);
       button.addEventListener("click", () => {
@@ -1336,6 +1356,7 @@ const buildVariantPicker = (item) => {
       variants: primaryVariants,
       selectedIndex: selectedVariantIndex,
       label: "variant",
+      getNextVariantIconDelayMs,
       onSelect: (variantIndex) => {
         item.selectedVariantIndex = variantIndex;
         const nextSubVariants = item.subVariantsByVariant
@@ -1369,6 +1390,7 @@ const buildVariantPicker = (item) => {
         variants: subVariants,
         selectedIndex: selectedSubVariantIndex,
         label: "subvariant",
+        getNextVariantIconDelayMs,
         onSelect: (subVariantIndex) => {
           const currentVariantIndex = getSelectedVariantIndex(item);
           item.selectedVariantIndex = currentVariantIndex;
