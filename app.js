@@ -41,6 +41,7 @@ const flowerGeneW2 = document.getElementById("flower-gene-w2");
 const flowerGeneS1 = document.getElementById("flower-gene-s1");
 const flowerGeneS2 = document.getElementById("flower-gene-s2");
 const searchResultsCount = document.getElementById("search-results-count");
+const searchWarning = document.getElementById("search-warning");
 const openOcrScannerButton = document.getElementById("open-ocr-scanner");
 const ocrModal = document.getElementById("ocr-modal");
 const closeOcrModalButton = document.getElementById("close-ocr-modal");
@@ -406,6 +407,7 @@ let previewLoadIndex = 0;
 let lastSearchQuery = "";
 let lastSearchResults = [];
 let lastSearchSignature = "";
+let searchWarningMessage = "";
 
 const DEFAULT_SPRITE =
   "data:image/svg+xml;utf8," +
@@ -1582,6 +1584,16 @@ const updateSearchResultsSummary = () => {
   }
 };
 
+const updateSearchWarning = (message = "") => {
+  searchWarningMessage = message;
+  if (!searchWarning) {
+    return;
+  }
+  searchWarning.textContent = message;
+  searchWarning.hidden = message.length === 0;
+};
+
+
 const toggleCatalogState = (item, shouldCatalog = null) => {
   const key = getCatalogStateKey(item);
   const nextCataloged = shouldCatalog === null ? !catalogedHexIds.has(key) : Boolean(shouldCatalog);
@@ -1620,9 +1632,13 @@ const renderCatalog = () => {
   catalogList.classList.toggle("condensed", filteredItems.length > 200);
 
   if (filteredItems.length === 0) {
-    catalogList.innerHTML = isSearchEmpty
-      ? "<p>Enter a search term to see items.</p>"
-      : "<p>No items match your search.</p>";
+    if (searchWarningMessage) {
+      catalogList.innerHTML = `<p>${searchWarningMessage}</p>`;
+    } else {
+      catalogList.innerHTML = isSearchEmpty
+        ? "<p>Enter a search term to see items.</p>"
+        : "<p>No items match your search.</p>";
+    }
     updateAddAllButton();
     updateSearchResultsSummary();
     return;
@@ -3178,6 +3194,7 @@ const filterCatalog = () => {
   const query = searchInput.value.trim().toLowerCase();
   isSearchEmpty = query.length === 0;
   if (isSearchEmpty) {
+    updateSearchWarning();
     filteredItems = [];
     lastSearchQuery = "";
     lastSearchResults = [];
@@ -3186,6 +3203,17 @@ const filterCatalog = () => {
     return;
   }
 
+  if (!hasActiveCategoryFilters()) {
+    updateSearchWarning("Select at least one category before searching.");
+    filteredItems = [];
+    lastSearchQuery = "";
+    lastSearchResults = [];
+    lastSearchSignature = "";
+    renderCatalog();
+    return;
+  }
+
+  updateSearchWarning();
   const signature = buildSearchSignature();
   const canRefineSearch =
     lastSearchQuery && query.startsWith(lastSearchQuery) && signature === lastSearchSignature;
