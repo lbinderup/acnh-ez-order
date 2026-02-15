@@ -114,6 +114,7 @@ const FLOWER_GENE_FLAGS = {
   S2: 1 << 7,
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
+const VARIANT_ICON_LOAD_DELAY_MS = 10;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Food", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
@@ -404,6 +405,7 @@ let categoryData = new Map();
 let sortMode = "category";
 let previewObserver = null;
 let previewLoadIndex = 0;
+let variantIconLoadIndex = 0;
 let lastSearchQuery = "";
 let lastSearchResults = [];
 let lastSearchSignature = "";
@@ -1059,6 +1061,12 @@ const assignSpriteWithDelay = (image, hexId, variantIndex, subVariantIndex, dela
   }, delayMs);
 };
 
+const assignVariantSpriteWithDelay = (image, hexId, variantIndex, subVariantIndex) => {
+  const delayMs = variantIconLoadIndex * VARIANT_ICON_LOAD_DELAY_MS;
+  variantIconLoadIndex = (variantIconLoadIndex + 1) % 1000;
+  assignSpriteWithDelay(image, hexId, variantIndex, subVariantIndex, delayMs);
+};
+
 const setLazyPreviewData = (image, hexId, variantIndex, subVariantIndex) => {
   image.dataset.lazyPreview = "true";
   image.dataset.hexId = hexId;
@@ -1255,12 +1263,12 @@ const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect }) => 
     image.className = "variant-sprite";
     image.alt = `${item.name} ${label} ${variantIndex}`;
     if (label === "subvariant") {
-      assignSprite(image, item.hexId, getSelectedVariantIndex(item), variantIndex);
+      assignVariantSpriteWithDelay(image, item.hexId, getSelectedVariantIndex(item), variantIndex);
     } else {
       const previewSubVariant = item.subVariantsByVariant
         ? (item.subVariantsByVariant.get(variantIndex) || [])[0] ?? null
         : null;
-      assignSprite(image, item.hexId, variantIndex, previewSubVariant);
+      assignVariantSpriteWithDelay(image, item.hexId, variantIndex, previewSubVariant);
     }
 
     button.appendChild(image);
@@ -1307,7 +1315,7 @@ const buildVariantPicker = (item) => {
       image.alt = `${item.name} (${option.label})`;
       const optionVariantIndex = getSelectedVariantIndex(option.item);
       const optionSubVariantIndex = getSelectedSubVariantIndex(option.item);
-      assignSprite(image, option.item.hexId, optionVariantIndex, optionSubVariantIndex);
+      assignVariantSpriteWithDelay(image, option.item.hexId, optionVariantIndex, optionSubVariantIndex);
 
       button.appendChild(image);
       button.addEventListener("click", () => {
@@ -1630,6 +1638,7 @@ const createOrderStatusBadge = (orderCount) => {
 
 const renderCatalog = () => {
   catalogList.innerHTML = "";
+  variantIconLoadIndex = 0;
   const usePreviews = filteredItems.length > 0;
   catalogList.classList.toggle("condensed", filteredItems.length > 200);
 
