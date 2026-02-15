@@ -286,6 +286,12 @@ button:disabled {
   font-weight: 700;
 }
 
+.search-warning {
+  margin: 0.5rem 0 0;
+  color: #b34700;
+  font-weight: 700;
+}
+
 .catalog-grid {
   margin-top: 1.5rem;
   display: grid;
