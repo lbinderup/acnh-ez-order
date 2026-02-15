@@ -115,6 +115,7 @@ const FLOWER_GENE_FLAGS = {
 };
 const PREVIEW_LOAD_DELAY_MS = 10;
 const VARIANT_ICON_LOAD_DELAY_MS = 10;
+const SEARCH_SETTLE_DELAY_MS = 250;
 const DEFAULT_SUPER_CATEGORY = "Furniture";
 const GROUPED_CATEGORIES = new Set(["Furniture", "Decor", "Fashion Items", "Materials", "Food", "Nature", "Tools", "Misc"]);
 const SUBCATEGORY_PRIORITY = {
@@ -162,6 +163,7 @@ const spriteLoadPromises = new Map();
 const unitIconCache = new Map();
 const unitIconLoadPromises = new Map();
 const spriteVariantMap = new Map();
+const availableSpriteFiles = new Set();
 const orderIdLookup = new Map();
 let savedOrders = [];
 const flowerColorCache = new Map();
@@ -405,6 +407,9 @@ let categoryData = new Map();
 let sortMode = "category";
 let previewObserver = null;
 let previewLoadIndex = 0;
+let variantIconObserver = null;
+let variantIconLoadIndex = 0;
+let pendingSearchTimeoutId = null;
 let lastSearchQuery = "";
 let lastSearchResults = [];
 let lastSearchSignature = "";
@@ -955,6 +960,14 @@ const buildSpriteCandidates = (hexId, variantIndex, subVariantIndex) => {
 const resolveSpriteUrl = (hexId, variantIndex, subVariantIndex) =>
   new Promise((resolve) => {
     const candidates = buildSpriteCandidates(hexId, variantIndex, subVariantIndex);
+    if (availableSpriteFiles.size > 0) {
+      const directMatch = candidates.find((candidate) => {
+        const filename = candidate.split("/").pop();
+        return filename ? availableSpriteFiles.has(filename.toUpperCase()) : false;
+      });
+      resolve(directMatch || null);
+      return;
+    }
     const attempt = (index) => {
       if (index >= candidates.length) {
         resolve(null);
@@ -1081,6 +1094,37 @@ const getLazyPreviewData = (image) => {
   return { hexId, variantIndex, subVariantIndex };
 };
 
+const setLazyVariantIconData = (image, hexId, variantIndex, subVariantIndex, delayMs = 0) => {
+  image.dataset.lazyVariantIcon = "true";
+  image.dataset.hexId = hexId;
+  image.dataset.variantIndex = variantIndex ?? "";
+  image.dataset.subVariantIndex = subVariantIndex ?? "";
+  image.dataset.variantDelayMs = String(Math.max(0, delayMs));
+  image.dataset.variantLoaded = "false";
+  image.src = DEFAULT_SPRITE;
+};
+
+const getLazyVariantIconData = (image) => {
+  if (image.dataset.lazyVariantIcon !== "true") {
+    return null;
+  }
+  const hexId = image.dataset.hexId;
+  if (!hexId) {
+    return null;
+  }
+  const variantIndex =
+    image.dataset.variantIndex === "" ? null : Number.parseInt(image.dataset.variantIndex, 10);
+  const subVariantIndex =
+    image.dataset.subVariantIndex === "" ? null : Number.parseInt(image.dataset.subVariantIndex, 10);
+  const delayMs = Number.parseInt(image.dataset.variantDelayMs || "0", 10);
+  return {
+    hexId,
+    variantIndex,
+    subVariantIndex,
+    delayMs: Number.isNaN(delayMs) ? 0 : delayMs,
+  };
+};
+
 const handlePreviewIntersection = (entries) => {
   entries.forEach((entry) => {
     if (!entry.isIntersecting) {
@@ -1112,6 +1156,37 @@ const ensurePreviewObserver = () => {
   previewLoadIndex = 0;
 };
 
+const handleVariantIconIntersection = (entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) {
+      return;
+    }
+    const image = entry.target;
+    const data = getLazyVariantIconData(image);
+    if (!data) {
+      return;
+    }
+    if (variantIconObserver) {
+      variantIconObserver.unobserve(image);
+    }
+    const delayMs = data.delayMs + variantIconLoadIndex * VARIANT_ICON_LOAD_DELAY_MS;
+    variantIconLoadIndex += 1;
+    assignSpriteWithDelay(image, data.hexId, data.variantIndex, data.subVariantIndex, delayMs);
+    image.dataset.variantLoaded = "true";
+  });
+};
+
+const ensureVariantIconObserver = () => {
+  if (!variantIconObserver) {
+    variantIconObserver = new IntersectionObserver(handleVariantIconIntersection, {
+      root: null,
+      threshold: 0.1,
+    });
+  }
+  variantIconObserver.disconnect();
+  variantIconLoadIndex = 0;
+};
+
 const observeCatalogPreviews = () => {
   const images = catalogList.querySelectorAll("img.item-sprite[data-lazy-preview='true']");
   if (!("IntersectionObserver" in window)) {
@@ -1131,6 +1206,28 @@ const observeCatalogPreviews = () => {
       return;
     }
     previewObserver.observe(image);
+  });
+};
+
+const observeVariantIcons = () => {
+  const images = catalogList.querySelectorAll("img.variant-sprite[data-lazy-variant-icon='true']");
+  if (!("IntersectionObserver" in window)) {
+    images.forEach((image) => {
+      const data = getLazyVariantIconData(image);
+      if (!data) {
+        return;
+      }
+      assignSpriteWithDelay(image, data.hexId, data.variantIndex, data.subVariantIndex, data.delayMs);
+      image.dataset.variantLoaded = "true";
+    });
+    return;
+  }
+  ensureVariantIconObserver();
+  images.forEach((image) => {
+    if (image.dataset.variantLoaded === "true") {
+      return;
+    }
+    variantIconObserver.observe(image);
   });
 };
 
@@ -1256,7 +1353,7 @@ const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect, getNe
     image.className = "variant-sprite";
     image.alt = `${item.name} ${label} ${variantIndex}`;
     if (label === "subvariant") {
-      assignSpriteWithDelay(
+      setLazyVariantIconData(
         image,
         item.hexId,
         getSelectedVariantIndex(item),
@@ -1267,7 +1364,7 @@ const buildVariantRow = ({ item, variants, selectedIndex, label, onSelect, getNe
       const previewSubVariant = item.subVariantsByVariant
         ? (item.subVariantsByVariant.get(variantIndex) || [])[0] ?? null
         : null;
-      assignSpriteWithDelay(image, item.hexId, variantIndex, previewSubVariant, getNextVariantIconDelayMs());
+      setLazyVariantIconData(image, item.hexId, variantIndex, previewSubVariant, getNextVariantIconDelayMs());
     }
 
     button.appendChild(image);
@@ -1321,7 +1418,7 @@ const buildVariantPicker = (item) => {
       image.alt = `${item.name} (${option.label})`;
       const optionVariantIndex = getSelectedVariantIndex(option.item);
       const optionSubVariantIndex = getSelectedSubVariantIndex(option.item);
-      assignSpriteWithDelay(
+      setLazyVariantIconData(
         image,
         option.item.hexId,
         optionVariantIndex,
@@ -1774,6 +1871,7 @@ const renderCatalog = () => {
   if (usePreviews) {
     window.requestAnimationFrame(() => {
       observeCatalogPreviews();
+      observeVariantIcons();
     });
   }
 };
@@ -1840,6 +1938,12 @@ const updateCatalogCard = (item) => {
     } else {
       card.appendChild(nextPicker);
     }
+  }
+
+  if (nextPicker) {
+    window.requestAnimationFrame(() => {
+      observeVariantIcons();
+    });
   }
 
   const orderCount = getOrderItemCount(item);
@@ -3215,6 +3319,10 @@ const buildSearchSignature = () => {
 };
 
 const filterCatalog = () => {
+  if (pendingSearchTimeoutId !== null) {
+    window.clearTimeout(pendingSearchTimeoutId);
+    pendingSearchTimeoutId = null;
+  }
   const query = searchInput.value.trim().toLowerCase();
   isSearchEmpty = query.length === 0;
   if (isSearchEmpty) {
@@ -3260,6 +3368,16 @@ const filterCatalog = () => {
   lastSearchResults = filteredItems;
   lastSearchSignature = signature;
   renderCatalog();
+};
+
+const scheduleFilterCatalog = () => {
+  if (pendingSearchTimeoutId !== null) {
+    window.clearTimeout(pendingSearchTimeoutId);
+  }
+  pendingSearchTimeoutId = window.setTimeout(() => {
+    pendingSearchTimeoutId = null;
+    filterCatalog();
+  }, SEARCH_SETTLE_DELAY_MS);
 };
 
 const resetCategoryFilters = () => {
@@ -3472,6 +3590,8 @@ const normalizeSpriteVariantEntry = (entryData) => {
 };
 
 const loadSpriteVariants = async () => {
+  spriteVariantMap.clear();
+  availableSpriteFiles.clear();
   try {
     const response = await fetch(DATA_PATHS.spriteMap);
     const entries = await response.json();
@@ -3479,6 +3599,7 @@ const loadSpriteVariants = async () => {
       if (!entry || !entry.filename) {
         return;
       }
+      availableSpriteFiles.add(entry.filename.toUpperCase());
       const subMatch = entry.filename.match(/^([0-9A-F]+)_(\d+)_(\d+)\.png$/i);
       if (subMatch) {
         const hexId = subMatch[1].toUpperCase();
@@ -3614,7 +3735,7 @@ if (unsafeToggle) {
   });
 }
 
-searchInput.addEventListener("input", filterCatalog);
+searchInput.addEventListener("input", scheduleFilterCatalog);
 clearSearchButton.addEventListener("click", () => {
   searchInput.value = "";
   filterCatalog();
