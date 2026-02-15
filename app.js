@@ -40,6 +40,62 @@ const flowerGeneW1 = document.getElementById("flower-gene-w1");
 const flowerGeneW2 = document.getElementById("flower-gene-w2");
 const flowerGeneS1 = document.getElementById("flower-gene-s1");
 const flowerGeneS2 = document.getElementById("flower-gene-s2");
+const searchResultsCount = document.getElementById("search-results-count");
+const openOcrScannerButton = document.getElementById("open-ocr-scanner");
+const ocrModal = document.getElementById("ocr-modal");
+const closeOcrModalButton = document.getElementById("close-ocr-modal");
+const toastRegion = document.getElementById("toast-region");
+const ocrStartButton = document.getElementById("start-ocr");
+const ocrStopButton = document.getElementById("stop-ocr");
+const ocrStatusElement = document.getElementById("ocr-status");
+const ocrVideoElement = document.getElementById("ocr-video");
+const ocrCanvasElement = document.getElementById("ocr-canvas");
+const ocrPreprocessToggleElement = document.getElementById("ocr-preprocess");
+const ocrMinConfidenceSliderElement = document.getElementById("ocr-min-confidence");
+const ocrMinConfidenceValueElement = document.getElementById("ocr-min-confidence-value");
+const ocrDebugLogElement = document.getElementById("ocr-debug-log");
+const clearOcrDebugButton = document.getElementById("clear-ocr-debug");
+const ocrPresetSelect = document.getElementById("ocr-preset");
+
+const OCR_ROI_WIDTH_RATIO = 0.84;
+const OCR_ROI_HEIGHT_RATIO = 0.26;
+const OCR_PREPROCESS_CONTRAST = 1.8;
+const OCR_PREPROCESS_THRESHOLD = 145;
+const OCR_PRESETS = {
+  reliable: {
+    label: "Reliable (current)",
+    scanIntervalMs: 2200,
+    minCandidateChars: 4,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.92,
+    requiredConsecutiveMatches: 2,
+  },
+  fast: {
+    label: "Fast",
+    scanIntervalMs: 1500,
+    minCandidateChars: 4,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.92,
+    requiredConsecutiveMatches: 1,
+  },
+  strict: {
+    label: "Strict",
+    scanIntervalMs: 2400,
+    minCandidateChars: 5,
+    minCandidateWords: 2,
+    matchSimilarityThreshold: 0.95,
+    requiredConsecutiveMatches: 3,
+  },
+};
+let activeOcrPresetKey = "reliable";
+
+let ocrCameraStream = null;
+let ocrScanIntervalId = null;
+let ocrScanInProgress = false;
+const catalogedHexIds = new Set();
+const detectedScanKeys = new Set();
+const ocrConsecutiveMatchCounts = new Map();
+
 let categoryDropdownListenerBound = false;
 let isOrderPopoverOpen = false;
 let newOrderToastTimeoutId = null;
@@ -112,6 +168,7 @@ let generatedFlowerRows = [];
 const STORAGE_KEYS = {
   currentOrder: "acnh-ez-order:current-order",
   savedOrders: "acnh-ez-order:saved-orders",
+  catalogedHexIds: "acnh-ez-order:cataloged-hex-ids",
 };
 
 const DATA_PATHS = {
@@ -1459,6 +1516,97 @@ const updateCatalogActionButtons = () => {
   });
 };
 
+
+const normalizeOcrText = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+const getCatalogFurnitureBaseName = (item) => {
+  if (!item) {
+    return "";
+  }
+  const anchor = item.nameVariantAnchor || item;
+  if (anchor.nameVariantBaseName) {
+    return anchor.nameVariantBaseName;
+  }
+  if (item.nameVariantBaseName) {
+    return item.nameVariantBaseName;
+  }
+  const parsed = parseItemNameVariant(item.name);
+  return parsed ? parsed.baseName : item.name;
+};
+
+const getCatalogStateKey = (item) => {
+  const selectedItem = getSelectedNameVariantItem(item);
+  if (item.superCategory === "Furniture") {
+    return `furniture:${normalizeOcrText(getCatalogFurnitureBaseName(selectedItem))}`;
+  }
+  return `hex:${selectedItem.hexId}`;
+};
+
+const isItemCataloged = (item) => catalogedHexIds.has(getCatalogStateKey(item));
+
+const saveCatalogedItems = () => {
+  localStorage.setItem(STORAGE_KEYS.catalogedHexIds, JSON.stringify([...catalogedHexIds]));
+};
+
+const loadCatalogedItems = () => {
+  const stored = safeParseJSON(localStorage.getItem(STORAGE_KEYS.catalogedHexIds), []);
+  if (!Array.isArray(stored)) {
+    return;
+  }
+  stored.forEach((key) => {
+    if (typeof key !== "string") {
+      return;
+    }
+    if (!key.startsWith("furniture:")) {
+      catalogedHexIds.add(key);
+      return;
+    }
+    const rawFurnitureName = key.slice("furniture:".length);
+    const normalizedRaw = normalizeOcrText(rawFurnitureName);
+    const matchedItem = catalogItems.find((item) => item.superCategory === "Furniture" && normalizeOcrText(item.name) === normalizedRaw);
+    if (matchedItem) {
+      catalogedHexIds.add(`furniture:${normalizeOcrText(getCatalogFurnitureBaseName(matchedItem))}`);
+      return;
+    }
+    catalogedHexIds.add(key);
+  });
+};
+
+const updateSearchResultsSummary = () => {
+  if (searchResultsCount) {
+    const label = filteredItems.length === 1 ? "result" : "results";
+    searchResultsCount.textContent = `${filteredItems.length} ${label}`;
+  }
+  if (openOcrScannerButton) {
+    openOcrScannerButton.disabled = filteredItems.length === 0;
+  }
+};
+
+const toggleCatalogState = (item, shouldCatalog = null) => {
+  const key = getCatalogStateKey(item);
+  const nextCataloged = shouldCatalog === null ? !catalogedHexIds.has(key) : Boolean(shouldCatalog);
+  if (nextCataloged) {
+    catalogedHexIds.add(key);
+  } else {
+    catalogedHexIds.delete(key);
+  }
+  saveCatalogedItems();
+  updateCatalogCard(item);
+};
+
+const showToast = (message) => {
+  if (!toastRegion) {
+    return;
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  toastRegion.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, 2800);
+};
+
 const createOrderStatusBadge = (orderCount) => {
   const badge = document.createElement("div");
   badge.className = "order-status-badge";
@@ -1476,12 +1624,14 @@ const renderCatalog = () => {
       ? "<p>Enter a search term to see items.</p>"
       : "<p>No items match your search.</p>";
     updateAddAllButton();
+    updateSearchResultsSummary();
     return;
   }
 
   filteredItems.forEach((item) => {
     const card = document.createElement("article");
     card.className = "catalog-card";
+    card.classList.toggle("is-cataloged", isItemCataloged(item));
     card.dataset.hexId = item.hexId;
     if (item.nameVariantGroupKey) {
       card.dataset.nameVariantGroupKey = item.nameVariantGroupKey;
@@ -1491,6 +1641,18 @@ const renderCatalog = () => {
     }
 
     const spriteFrame = buildSpriteFrame(item, { usePreview: usePreviews, lazyLoad: usePreviews });
+    spriteFrame.classList.add("catalog-toggle");
+    spriteFrame.title = "Toggle cataloged state";
+    spriteFrame.addEventListener("click", () => toggleCatalogState(item));
+    const typeIcon = spriteFrame.querySelector(".type-icon");
+    if (typeIcon) {
+      typeIcon.title = "Toggle cataloged state";
+      typeIcon.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleCatalogState(item);
+      });
+    }
 
     let title;
     let meta;
@@ -1568,6 +1730,7 @@ const renderCatalog = () => {
   });
 
   updateAddAllButton();
+  updateSearchResultsSummary();
   if (usePreviews) {
     window.requestAnimationFrame(() => {
       observeCatalogPreviews();
@@ -1584,6 +1747,8 @@ const updateCatalogCard = (item) => {
   if (!card) {
     return;
   }
+
+  card.classList.toggle("is-cataloged", isItemCataloged(item));
 
   const image = card.querySelector(".item-sprite");
   if (image) {
@@ -2680,6 +2845,290 @@ const addGeneratedFlowersToOrder = () => {
   flowerGeneratorStatus.textContent = `Added ${entries.length} generated flowers to your order queue (${formatFlowerGeneLabel(flowerGene)}).`;
 };
 
+
+const getOcrMinConfidenceThreshold = () => {
+  const threshold = Number.parseInt(ocrMinConfidenceSliderElement?.value || "85", 10);
+  return Number.isFinite(threshold) ? threshold : 85;
+};
+
+const getOcrRoiRect = (sourceWidth, sourceHeight) => {
+  const roiWidth = Math.max(1, Math.floor(sourceWidth * OCR_ROI_WIDTH_RATIO));
+  const roiHeight = Math.max(1, Math.floor(sourceHeight * OCR_ROI_HEIGHT_RATIO));
+  return {
+    x: Math.floor((sourceWidth - roiWidth) / 2),
+    y: Math.floor((sourceHeight - roiHeight) / 2),
+    width: roiWidth,
+    height: roiHeight,
+  };
+};
+
+const updateOcrLabels = () => {
+  if (!ocrMinConfidenceValueElement) {
+    return;
+  }
+  ocrMinConfidenceValueElement.textContent = `${getOcrMinConfidenceThreshold()}%`;
+};
+
+const getActiveOcrPreset = () => OCR_PRESETS[activeOcrPresetKey] || OCR_PRESETS.reliable;
+
+const updateOcrPreset = () => {
+  if (!ocrPresetSelect) {
+    activeOcrPresetKey = "reliable";
+    return;
+  }
+  const nextKey = ocrPresetSelect.value;
+  activeOcrPresetKey = OCR_PRESETS[nextKey] ? nextKey : "reliable";
+};
+
+const prependOcrDebugLog = (message) => {
+  if (!ocrDebugLogElement) {
+    return;
+  }
+  const row = document.createElement("li");
+  row.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+  ocrDebugLogElement.prepend(row);
+};
+
+const clearOcrDebugLog = () => {
+  if (ocrDebugLogElement) {
+    ocrDebugLogElement.textContent = "";
+  }
+};
+
+const getOcrTargets = () => {
+  const byKey = new Map();
+  filteredItems.forEach((item) => {
+    const key = getCatalogStateKey(item);
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        key,
+        name: item.superCategory === "Furniture" ? getCatalogFurnitureBaseName(item) : item.name,
+        normalized: normalizeOcrText(item.superCategory === "Furniture" ? getCatalogFurnitureBaseName(item) : item.name),
+      });
+    }
+  });
+  return [...byKey.values()];
+};
+
+const ocrLevenshteinDistance = (a, b) => {
+  if (a === b) return 0;
+  const prev = new Array(b.length + 1);
+  const next = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j += 1) prev[j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    next[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      next[j] = Math.min(next[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j += 1) prev[j] = next[j];
+  }
+  return prev[b.length];
+};
+
+const extractOcrCandidates = (result) => {
+  const rawText = result.data.text || "";
+  const lines = rawText.split(/\n+/).map((line) => normalizeOcrText(line)).filter(Boolean);
+  const minConfidence = getOcrMinConfidenceThreshold();
+  const words = (result.data.words || [])
+    .filter((word) => (word.confidence ?? 0) >= minConfidence)
+    .map((word) => normalizeOcrText(word.text))
+    .filter(Boolean);
+  const candidates = new Set();
+  const sourceWords = words.length > 0 ? words : lines.flatMap((line) => line.split(" "));
+  for (let start = 0; start < sourceWords.length; start += 1) {
+    for (let length = 1; length <= 6 && start + length <= sourceWords.length; length += 1) {
+      const phrase = sourceWords.slice(start, start + length).join(" ").trim();
+      if (!phrase) {
+        continue;
+      }
+      const wordCount = phrase.split(" ").filter(Boolean).length;
+      if (phrase.length < getActiveOcrPreset().minCandidateChars || wordCount < getActiveOcrPreset().minCandidateWords) {
+        continue;
+      }
+      candidates.add(phrase);
+    }
+  }
+  return [...candidates];
+};
+
+const findOcrTargetMatch = (result, targets) => {
+  const candidates = extractOcrCandidates(result);
+  let best = null;
+  for (const target of targets) {
+    if (detectedScanKeys.has(target.key)) {
+      continue;
+    }
+    for (const candidate of candidates) {
+      if (candidate.includes(target.normalized)) {
+        return { match: target, best: { target, candidate, similarity: 1 }, candidates };
+      }
+      const distance = ocrLevenshteinDistance(candidate, target.normalized);
+      const similarity = 1 - distance / Math.max(1, Math.max(candidate.length, target.normalized.length));
+      if (!best || similarity > best.similarity) {
+        best = { target, candidate, similarity };
+      }
+    }
+  }
+  return {
+    match: best && best.similarity >= getActiveOcrPreset().matchSimilarityThreshold ? best.target : null,
+    best,
+    candidates,
+  };
+};
+
+const applyCatalogStateByKey = (key, isCataloged) => {
+  catalogItems.forEach((item) => {
+    if (getCatalogStateKey(item) === key) {
+      toggleCatalogState(item, isCataloged);
+    }
+  });
+};
+
+const stopOcrScan = () => {
+  if (ocrScanIntervalId) {
+    clearInterval(ocrScanIntervalId);
+    ocrScanIntervalId = null;
+  }
+  if (ocrCameraStream) {
+    ocrCameraStream.getTracks().forEach((track) => track.stop());
+    ocrCameraStream = null;
+  }
+  if (ocrVideoElement) {
+    ocrVideoElement.srcObject = null;
+  }
+  ocrScanInProgress = false;
+  if (ocrStartButton) ocrStartButton.disabled = false;
+  if (ocrStopButton) ocrStopButton.disabled = true;
+  ocrConsecutiveMatchCounts.clear();
+  prependOcrDebugLog("Scanner stopped.");
+};
+
+const scanOcrFrame = async () => {
+  if (ocrScanInProgress || !ocrVideoElement || !ocrCanvasElement || !ocrVideoElement.videoWidth || !ocrVideoElement.videoHeight) {
+    return;
+  }
+  ocrScanInProgress = true;
+  const ctx = ocrCanvasElement.getContext("2d", { willReadFrequently: true });
+  const roi = getOcrRoiRect(ocrVideoElement.videoWidth, ocrVideoElement.videoHeight);
+  ocrCanvasElement.width = roi.width;
+  ocrCanvasElement.height = roi.height;
+  ctx.drawImage(ocrVideoElement, roi.x, roi.y, roi.width, roi.height, 0, 0, roi.width, roi.height);
+  if (ocrPreprocessToggleElement?.checked) {
+    const imageData = ctx.getImageData(0, 0, roi.width, roi.height);
+    const pixels = imageData.data;
+    const contrast = OCR_PREPROCESS_CONTRAST;
+    const threshold = OCR_PREPROCESS_THRESHOLD;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const grayscale = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+      const contrasted = (grayscale - 128) * contrast + 128;
+      const binary = contrasted >= threshold ? 255 : 0;
+      pixels[i] = binary; pixels[i + 1] = binary; pixels[i + 2] = binary; pixels[i + 3] = 255;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  try {
+    const result = await Tesseract.recognize(ocrCanvasElement, "eng", {
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+      preserve_interword_spaces: "1",
+    });
+    const targets = getOcrTargets();
+    const { match, best, candidates } = findOcrTargetMatch(result, targets);
+    const confidenceSummary = `conf≥${getOcrMinConfidenceThreshold()}%`;
+    if (match) {
+      const nextCount = (ocrConsecutiveMatchCounts.get(match.key) || 0) + 1;
+      ocrConsecutiveMatchCounts.set(match.key, nextCount);
+      if (nextCount >= getActiveOcrPreset().requiredConsecutiveMatches) {
+        detectedScanKeys.add(match.key);
+        ocrConsecutiveMatchCounts.clear();
+        applyCatalogStateByKey(match.key, true);
+        showToast(`Detected: ${match.name}`);
+        prependOcrDebugLog(`MATCH ${match.name} (${confidenceSummary}, frames=${nextCount})`);
+        if (ocrStatusElement) {
+          ocrStatusElement.textContent = `✅ Detected ${match.name}`;
+          ocrStatusElement.classList.add("match");
+        }
+      } else {
+        prependOcrDebugLog(`Candidate ${match.name} pending (${confidenceSummary}, frames=${nextCount}/${getActiveOcrPreset().requiredConsecutiveMatches})`);
+        if (ocrStatusElement) {
+          ocrStatusElement.textContent = `Candidate found: ${match.name} (${nextCount}/${getActiveOcrPreset().requiredConsecutiveMatches})`;
+          ocrStatusElement.classList.remove("match");
+        }
+      }
+    } else {
+      ocrConsecutiveMatchCounts.clear();
+      const bestText = best
+        ? `best="${best.candidate}" → "${best.target.name}" (${(best.similarity * 100).toFixed(1)}%)`
+        : "best=n/a";
+      prependOcrDebugLog(`No match (${confidenceSummary}, ${bestText}, candidates=${candidates.length})`);
+      if (ocrStatusElement) {
+        ocrStatusElement.textContent = "Scanning current result set...";
+        ocrStatusElement.classList.remove("match");
+      }
+    }
+  } catch (error) {
+    if (ocrStatusElement) {
+      ocrStatusElement.textContent = `OCR error: ${error.message}`;
+      ocrStatusElement.classList.remove("match");
+    }
+  } finally {
+    ocrScanInProgress = false;
+  }
+};
+
+const startOcrScan = async () => {
+  if (!ocrVideoElement) return;
+  updateOcrPreset();
+  ocrStartButton.disabled = true;
+  ocrStopButton.disabled = false;
+  if (ocrStatusElement) {
+    ocrStatusElement.textContent = "Starting camera...";
+    ocrStatusElement.classList.remove("match");
+  }
+  try {
+    prependOcrDebugLog("Starting camera scan...");
+    prependOcrDebugLog(`Preset: ${getActiveOcrPreset().label}`);
+    prependOcrDebugLog(`Rules: interval=${getActiveOcrPreset().scanIntervalMs}ms, minCandidate=${getActiveOcrPreset().minCandidateChars} chars, minWords=${getActiveOcrPreset().minCandidateWords}, similarity≥${(getActiveOcrPreset().matchSimilarityThreshold * 100).toFixed(0)}%, consecutive=${getActiveOcrPreset().requiredConsecutiveMatches}`);
+    ocrCameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        aspectRatio: { ideal: 16 / 9, min: 1.3 },
+        resizeMode: "crop-and-scale",
+      },
+      audio: false,
+    });
+    ocrVideoElement.srcObject = ocrCameraStream;
+    await ocrVideoElement.play();
+    if (ocrStatusElement) ocrStatusElement.textContent = "Camera active. Scanning current result set...";
+    await scanOcrFrame();
+    ocrScanIntervalId = setInterval(scanOcrFrame, getActiveOcrPreset().scanIntervalMs);
+  } catch (error) {
+    if (ocrStatusElement) ocrStatusElement.textContent = `Unable to start: ${error.message}`;
+    stopOcrScan();
+  }
+};
+
+const openOcrModal = () => {
+  if (!ocrModal) return;
+  ocrModal.hidden = false;
+  detectedScanKeys.clear();
+  ocrConsecutiveMatchCounts.clear();
+  updateOcrPreset();
+  clearOcrDebugLog();
+  prependOcrDebugLog("Ready. Press Start camera scan.");
+  prependOcrDebugLog(`Selected preset: ${getActiveOcrPreset().label}`);
+  updateOcrLabels();
+};
+
+const closeOcrModal = () => {
+  if (!ocrModal) return;
+  stopOcrScan();
+  ocrModal.hidden = true;
+};
+
 const openFlowerGenerator = () => {
   if (!flowerGeneratorModal) {
     return;
@@ -3071,6 +3520,7 @@ const init = async () => {
   populateCategoryToggles();
   renderCatalog();
   loadSavedOrders();
+  loadCatalogedItems();
   const storedOrderItems = loadCurrentOrder();
   storedOrderItems
     .map((item) => hydrateOrderItem(item))
@@ -3079,6 +3529,7 @@ const init = async () => {
   renderOrder();
   renderSavedOrders();
   refreshCatalogOrderState();
+  updateSearchResultsSummary();
 };
 
 if (unsafeToggle) {
@@ -3172,6 +3623,51 @@ if (addSelectedFlowersButton) {
   addSelectedFlowersButton.addEventListener("click", addGeneratedFlowersToOrder);
 }
 
+
+if (openOcrScannerButton) {
+  openOcrScannerButton.addEventListener("click", openOcrModal);
+}
+
+if (closeOcrModalButton) {
+  closeOcrModalButton.addEventListener("click", closeOcrModal);
+}
+
+if (ocrStartButton) {
+  ocrStartButton.addEventListener("click", startOcrScan);
+}
+
+if (ocrStopButton) {
+  ocrStopButton.addEventListener("click", stopOcrScan);
+}
+
+if (ocrMinConfidenceSliderElement) {
+  ocrMinConfidenceSliderElement.addEventListener("input", updateOcrLabels);
+}
+
+if (ocrPresetSelect) {
+  ocrPresetSelect.value = activeOcrPresetKey;
+  ocrPresetSelect.addEventListener("change", () => {
+    updateOcrPreset();
+    prependOcrDebugLog(`Preset changed to: ${getActiveOcrPreset().label}`);
+  });
+}
+
+if (clearOcrDebugButton) {
+  clearOcrDebugButton.addEventListener("click", clearOcrDebugLog);
+}
+
+if (ocrModal) {
+  ocrModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.closeOcrModal === "true") {
+      closeOcrModal();
+    }
+  });
+}
+
 if (flowerGeneratorModal) {
   flowerGeneratorModal.addEventListener("click", (event) => {
     const target = event.target;
@@ -3185,9 +3681,17 @@ if (flowerGeneratorModal) {
 }
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && flowerGeneratorModal && !flowerGeneratorModal.hidden) {
+  if (event.key !== "Escape") {
+    return;
+  }
+  if (flowerGeneratorModal && !flowerGeneratorModal.hidden) {
     closeFlowerGenerator();
   }
+  if (ocrModal && !ocrModal.hidden) {
+    closeOcrModal();
+  }
 });
+
+window.addEventListener("beforeunload", stopOcrScan);
 
 init();
