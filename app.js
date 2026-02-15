@@ -940,6 +940,8 @@ const buildSpriteCandidates = (hexId, variantIndex, subVariantIndex) => {
   if (variantIndex !== null && variantIndex !== undefined) {
     if (subVariantIndex !== null && subVariantIndex !== undefined) {
       candidates.push(`${SPRITE_BASE_PATH}/${hexId}_${variantIndex}_${subVariantIndex}.png`);
+    } else {
+      candidates.push(`${SPRITE_BASE_PATH}/${hexId}_0_${variantIndex}.png`);
     }
     candidates.push(`${SPRITE_BASE_PATH}/${hexId}_${variantIndex}.png`);
   }
@@ -3429,6 +3431,24 @@ const ensureSpriteVariantEntry = (hexId) => {
   return spriteVariantMap.get(hexId);
 };
 
+const normalizeSpriteVariantEntry = (entryData) => {
+  if (!entryData || entryData.variants.size !== 1 || !entryData.variants.has(0)) {
+    return;
+  }
+  if (entryData.subVariantsByVariant.size !== 1 || !entryData.subVariantsByVariant.has(0)) {
+    return;
+  }
+  const subVariants = Array.from(entryData.subVariantsByVariant.get(0) || []);
+  if (subVariants.length <= 1) {
+    return;
+  }
+
+  // Some item sprites are exported as HEX_0_N, where N is the main variant index.
+  // Promote those indexes to primary variants so the UI doesn't show a fake subvariant picker.
+  entryData.variants = new Set(subVariants);
+  entryData.subVariantsByVariant = new Map();
+};
+
 const loadSpriteVariants = async () => {
   try {
     const response = await fetch(DATA_PATHS.spriteMap);
@@ -3464,6 +3484,10 @@ const loadSpriteVariants = async () => {
       }
       const entryData = ensureSpriteVariantEntry(hexId);
       entryData.variants.add(variantIndex);
+    });
+
+    spriteVariantMap.forEach((entryData) => {
+      normalizeSpriteVariantEntry(entryData);
     });
   } catch (error) {
     console.warn("Unable to load sprite variants.", error);
